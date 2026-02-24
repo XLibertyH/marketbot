@@ -1,6 +1,6 @@
 import { storage } from "./storage";
-import { getFinnhubNews } from "./finnhub";
-import { analyzeStock } from "./aiAnalysis";
+import { getFinnhubNews, getFinnhubMarketNews } from "./finnhub";
+import { analyzeStock, discoverStocks } from "./aiAnalysis";
 import { getFinnhubQuote, getFinnhubCandles } from "./finnhub";
 import { getMockQuote, getMockHistoricalData, getMockSignal } from "./mockData";
 import { placeOrder, getPositions } from "./alpaca";
@@ -10,12 +10,17 @@ import { log } from "./index";
 import type { StockQuote, HistoricalDataPoint } from "@shared/schema";
 
 const seenHeadlines = new Set<string>();
+const seenMarketHeadlines = new Set<string>();
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let isMonitoring = false;
 const NEWS_POLL_INTERVAL_MS = 60_000;
 
 function headlineKey(symbol: string, headline: string): string {
   return `${symbol}:${headline.slice(0, 100)}`;
+}
+
+function marketHeadlineKey(headline: string): string {
+  return `MARKET:${headline.slice(0, 100)}`;
 }
 
 async function checkNewsForSymbol(symbol: string): Promise<{ headline: string; source: string }[]> {
@@ -169,10 +174,154 @@ async function handleBreakingNews(symbol: string, newHeadlines: { headline: stri
   }
 }
 
+async function checkMarketNews(): Promise<{ headline: string; source: string }[]> {
+  try {
+    const articles = await getFinnhubMarketNews(15);
+    const newArticles: { headline: string; source: string }[] = [];
+
+    for (const article of articles) {
+      const key = marketHeadlineKey(article.headline);
+      if (!seenMarketHeadlines.has(key)) {
+        seenMarketHeadlines.add(key);
+        newArticles.push({ headline: article.headline, source: article.source });
+      }
+    }
+
+    return newArticles;
+  } catch {
+    return [];
+  }
+}
+
+async function handleMarketNews(newHeadlines: { headline: string; source: string }[]) {
+  for (const article of newHeadlines.slice(0, 5)) {
+    addAutoTradeLog("news", `Market News: "${article.headline}" (${article.source})`);
+
+    await storage.addNews({
+      symbol: "MARKET",
+      headline: article.headline,
+      summary: article.headline,
+      source: article.source,
+      sentiment: 0,
+      url: null,
+    });
+  }
+
+  addAutoTradeLog("news", `${newHeadlines.length} new market headline${newHeadlines.length > 1 ? "s" : ""} detected`);
+
+  const settings = await storage.getSettings();
+  const watchlist = await storage.getWatchlist();
+  const currentSymbols = watchlist.map(w => w.symbol.toUpperCase());
+  const marketHeadlineTexts = newHeadlines.map(h => h.headline);
+
+  try {
+    const suggestions = await discoverStocks(currentSymbols, marketHeadlineTexts);
+    for (const suggestion of suggestions) {
+      if (!suggestion.symbol || suggestion.symbol.length === 0 || suggestion.symbol.length > 5) continue;
+      if (currentSymbols.includes(suggestion.symbol)) continue;
+
+      await storage.addWatchlistItem({ symbol: suggestion.symbol, name: suggestion.name });
+      currentSymbols.push(suggestion.symbol);
+      addAutoTradeLog("news", `Market news triggered: AI added ${suggestion.symbol} (${suggestion.name}) to watchlist — ${suggestion.reason}`, suggestion.symbol);
+    }
+  } catch (err: any) {
+    log(`[NewsMonitor] Stock discovery from market news failed: ${err.message}`, "news-monitor");
+  }
+
+  if (settings.autoTrade && watchlist.length > 0) {
+    for (const item of watchlist.slice(0, 3)) {
+      try {
+        let quote: StockQuote;
+        let history: HistoricalDataPoint[];
+
+        try {
+          quote = await getFinnhubQuote(item.symbol);
+          history = await getFinnhubCandles(item.symbol, 30);
+        } catch {
+          quote = getMockQuote(item.symbol);
+          history = getMockHistoricalData(item.symbol, 30);
+        }
+
+        let signalData: { signal: string; confidence: number; reason: string };
+        try {
+          signalData = await analyzeStock(item.symbol, quote, history, marketHeadlineTexts);
+        } catch {
+          signalData = getMockSignal(item.symbol, quote.price);
+        }
+
+        await storage.addSignal({
+          symbol: item.symbol,
+          signal: signalData.signal,
+          confidence: signalData.confidence,
+          price: quote.price,
+          reason: signalData.reason,
+        });
+
+        addAutoTradeLog("signal", `Market-news-driven ${signalData.signal} at ${(signalData.confidence * 100).toFixed(0)}% confidence — $${quote.price.toFixed(2)}`, item.symbol, {
+          signal: signalData.signal, confidence: signalData.confidence, price: quote.price, triggeredBy: "market-news",
+        });
+
+        if (signalData.confidence < settings.autoTradeMinConfidence || signalData.signal === "HOLD") continue;
+
+        let existingPositions: string[] = [];
+        try {
+          const positions = await getPositions();
+          existingPositions = positions.map(p => p.symbol.toUpperCase());
+        } catch { continue; }
+
+        if (signalData.signal === "BUY" && !existingPositions.includes(item.symbol.toUpperCase())) {
+          const qty = Math.max(1, Math.floor(settings.autoTradePositionSize / quote.price));
+          const safety = await validateOrder({ symbol: item.symbol, qty, side: "buy", type: "market" });
+          if (!safety.allowed) continue;
+
+          try {
+            const order = await placeOrder({ symbol: item.symbol, qty, side: "buy", type: "market", time_in_force: "day" });
+            recordOrderPlaced();
+            addAutoTradeLog("trade", `MARKET-NEWS BUY ${qty} shares at ~$${quote.price.toFixed(2)}`, item.symbol, {
+              orderId: order.id, qty, side: "buy", triggeredBy: "market-news",
+            });
+          } catch (err: any) {
+            addAutoTradeLog("error", `Failed market-news BUY: ${err.message}`, item.symbol);
+          }
+        }
+
+        if (signalData.signal === "SELL" && existingPositions.includes(item.symbol.toUpperCase())) {
+          try {
+            const positions = await getPositions();
+            const pos = positions.find(p => p.symbol.toUpperCase() === item.symbol.toUpperCase());
+            if (!pos) continue;
+            const qty = parseInt(pos.qty);
+            const safety = await validateOrder({ symbol: item.symbol, qty, side: "sell", type: "market" });
+            if (!safety.allowed) continue;
+            const order = await placeOrder({ symbol: item.symbol, qty, side: "sell", type: "market", time_in_force: "day" });
+            recordOrderPlaced();
+            addAutoTradeLog("trade", `MARKET-NEWS SELL ${qty} shares at ~$${quote.price.toFixed(2)}`, item.symbol, {
+              orderId: order.id, qty, side: "sell", triggeredBy: "market-news",
+            });
+          } catch (err: any) {
+            addAutoTradeLog("error", `Failed market-news SELL: ${err.message}`, item.symbol);
+          }
+        }
+      } catch (err: any) {
+        addAutoTradeLog("error", `Market news analysis failed for ${item.symbol}: ${err.message}`, item.symbol);
+      }
+    }
+  }
+}
+
 async function pollAllNews() {
   const settings = await storage.getSettings();
 
   if (settings.simulationMode) return;
+
+  try {
+    const newMarketHeadlines = await checkMarketNews();
+    if (newMarketHeadlines.length > 0) {
+      await handleMarketNews(newMarketHeadlines);
+    }
+  } catch (err: any) {
+    log(`[NewsMonitor] Error checking market news: ${err.message}`, "news-monitor");
+  }
 
   const watchlist = await storage.getWatchlist();
   if (watchlist.length === 0) return;
@@ -193,10 +342,18 @@ export async function startNewsMonitor() {
   if (isMonitoring) return;
   isMonitoring = true;
 
-  addAutoTradeLog("start", "News monitor started — checking for breaking headlines every 60 seconds");
+  addAutoTradeLog("start", "News monitor started — checking market & company headlines every 60 seconds");
 
   const settings = await storage.getSettings();
   if (!settings.simulationMode) {
+    try {
+      const marketArticles = await getFinnhubMarketNews(15);
+      for (const article of marketArticles) {
+        seenMarketHeadlines.add(marketHeadlineKey(article.headline));
+      }
+      addAutoTradeLog("scan", `Indexed ${marketArticles.length} existing market headlines`);
+    } catch {}
+
     const watchlist = await storage.getWatchlist();
     for (const item of watchlist) {
       try {

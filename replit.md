@@ -37,10 +37,12 @@ AI-powered stock trading bot with real-time dashboard. Supports simulation mode 
 - Also starts on server boot if autoTrade was enabled
 
 ## News Monitor (`server/newsMonitor.ts`)
-- Polls Finnhub company-news endpoint every 60 seconds for each watchlist stock
-- On startup, indexes all existing headlines so only truly new ones trigger analysis
-- When new headlines detected: logs them, triggers immediate AI analysis with the fresh headlines
-- If auto-trade is enabled, places orders based on the news-driven AI signal
+- **General market news**: Polls Finnhub `/news?category=general` every 60 seconds for broad market headlines (Fed decisions, sector moves, economic data, etc.)
+- **Company-specific news**: Polls Finnhub `/company-news` every 60 seconds for each watchlist stock
+- On startup, indexes all existing headlines (both market and company) so only truly new ones trigger analysis
+- When new market headlines detected: logs them, asks AI to discover relevant stocks to add to watchlist, re-analyzes top watchlist stocks with market context
+- When new company headlines detected: logs them, triggers immediate AI analysis for that stock
+- If auto-trade is enabled, places orders based on news-driven AI signals
 - Activity shows in the same Dashboard log with orange newspaper icon
 - Automatically starts when simulation mode is turned OFF (real Finnhub data)
 - Stops when simulation mode is turned ON

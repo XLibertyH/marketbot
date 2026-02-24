@@ -73,6 +73,20 @@ export async function getFinnhubCandles(symbol: string, days: number = 90): Prom
   return points;
 }
 
+export async function getFinnhubMarketNews(count: number = 10) {
+  const data = await finnhubGet("/news", { category: "general" });
+
+  if (!Array.isArray(data)) return [];
+
+  return data.slice(0, count).map((item: any) => ({
+    headline: item.headline || "No headline",
+    summary: item.summary || "No summary available",
+    source: item.source || "Unknown",
+    url: item.url || null,
+    publishedAt: new Date((item.datetime || 0) * 1000),
+  }));
+}
+
 export async function getFinnhubNews(symbol: string, count: number = 5) {
   const to = new Date().toISOString().split("T")[0];
   const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
