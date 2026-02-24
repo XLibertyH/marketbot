@@ -30,6 +30,7 @@ AI-powered stock trading bot with real-time dashboard. Supports simulation mode 
 - Skips BUY if already holding a position in that stock
 - Respects all safety guards (max order value, daily loss limit, daily order limit, allowed symbols)
 - Calculates share quantity from position size setting and current price
+- **AI Stock Discovery**: After each scan, asks AI to suggest 1-3 new stocks to watch based on market conditions and news; automatically adds them to the watchlist
 - Activity log stored in memory (last 100 entries), visible on Dashboard
 - Settings: `autoTradeInterval` (minutes), `autoTradeMinConfidence` (0-1), `autoTradePositionSize` ($)
 - Starts/stops automatically when autoTrade setting is toggled

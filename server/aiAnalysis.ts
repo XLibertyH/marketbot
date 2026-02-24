@@ -61,3 +61,53 @@ Respond with ONLY valid JSON in this exact format:
     reason: "Unable to generate AI analysis. Using default HOLD recommendation.",
   };
 }
+
+export async function discoverStocks(
+  currentSymbols: string[],
+  recentNews: string[]
+): Promise<{ symbol: string; name: string; reason: string }[]> {
+  const prompt = `You are a stock market research AI. Based on current market conditions and news, suggest 1-3 stocks worth watching that are NOT already in this list: ${currentSymbols.join(", ")}.
+
+${recentNews.length > 0 ? `Recent market news:\n${recentNews.map(h => `- ${h}`).join("\n")}` : ""}
+
+Consider stocks that:
+- Are trending due to recent news or earnings
+- Show strong momentum or breakout potential
+- Belong to sectors gaining attention
+- Are well-known, liquid US stocks (listed on NYSE or NASDAQ)
+
+Respond with ONLY valid JSON in this exact format:
+[
+  { "symbol": "TICKER", "name": "Company Name", "reason": "Brief reason why this stock is worth watching" }
+]
+
+Return between 1 and 3 stocks. Only suggest real, currently traded US stocks.`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || "gpt-5-nano",
+      messages: [{ role: "user", content: prompt }],
+      max_completion_tokens: 300,
+    });
+
+    const content = response.choices[0]?.message?.content || "";
+    const jsonMatch = content.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((s: any) => s.symbol && s.name && typeof s.symbol === "string")
+          .map((s: any) => ({
+            symbol: s.symbol.toUpperCase().replace(/[^A-Z]/g, ""),
+            name: s.name,
+            reason: s.reason || "AI-suggested stock",
+          }))
+          .slice(0, 3);
+      }
+    }
+  } catch (error) {
+    console.error("AI stock discovery error:", error);
+  }
+
+  return [];
+}

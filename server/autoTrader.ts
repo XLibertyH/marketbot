@@ -1,5 +1,5 @@
 import { storage } from "./storage";
-import { analyzeStock } from "./aiAnalysis";
+import { analyzeStock, discoverStocks } from "./aiAnalysis";
 import { placeOrder, getAccount, getPositions, isLiveTrading } from "./alpaca";
 import { validateOrder, recordOrderPlaced } from "./tradingGuards";
 import { getMockQuote, getMockHistoricalData, getMockNews, getMockSignal } from "./mockData";
@@ -221,6 +221,53 @@ async function runAutoTradePass() {
   }
 
   addLog("scan", "Auto-trade scan complete");
+
+  await discoverNewStocks(settings);
+}
+
+async function discoverNewStocks(settings: Awaited<ReturnType<typeof storage.getSettings>>) {
+  try {
+    const watchlist = await storage.getWatchlist();
+    const currentSymbols = watchlist.map(w => w.symbol.toUpperCase());
+
+    let recentNews: string[] = [];
+    if (!settings.simulationMode) {
+      for (const item of watchlist.slice(0, 3)) {
+        try {
+          const news = await getFinnhubNews(item.symbol, 3);
+          recentNews.push(...news.map(n => n.headline));
+        } catch {}
+      }
+    }
+
+    addLog("scan", "AI scanning for new stocks to add to watchlist...");
+
+    const suggestions = await discoverStocks(currentSymbols, recentNews);
+
+    if (suggestions.length === 0) {
+      addLog("skip", "AI found no new stocks to suggest this cycle");
+      return;
+    }
+
+    for (const suggestion of suggestions) {
+      if (!suggestion.symbol || suggestion.symbol.length === 0 || suggestion.symbol.length > 5) continue;
+
+      const alreadyExists = currentSymbols.includes(suggestion.symbol);
+      if (alreadyExists) {
+        addLog("skip", `${suggestion.symbol} already on watchlist`, suggestion.symbol);
+        continue;
+      }
+
+      await storage.addWatchlistItem({ symbol: suggestion.symbol, name: suggestion.name });
+      currentSymbols.push(suggestion.symbol);
+      addLog("news", `AI added ${suggestion.symbol} (${suggestion.name}) to watchlist: ${suggestion.reason}`, suggestion.symbol, {
+        action: "watchlist_add",
+        reason: suggestion.reason,
+      });
+    }
+  } catch (err: any) {
+    addLog("error", `Stock discovery failed: ${err.message}`);
+  }
 }
 
 export async function startAutoTrader() {
