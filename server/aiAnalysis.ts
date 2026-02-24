@@ -2,8 +2,8 @@ import OpenAI from "openai";
 import type { StockQuote, HistoricalDataPoint } from "@shared/schema";
 
 const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "local",
+  baseURL: process.env.OPENAI_BASE_URL || process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
 export async function analyzeStock(
@@ -36,7 +36,7 @@ Respond with ONLY valid JSON in this exact format:
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5-nano",
+      model: process.env.OPENAI_MODEL || "gpt-5-nano",
       messages: [{ role: "user", content: prompt }],
       max_completion_tokens: 200,
     });
