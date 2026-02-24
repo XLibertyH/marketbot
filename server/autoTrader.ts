@@ -10,7 +10,7 @@ import type { StockQuote, HistoricalDataPoint } from "@shared/schema";
 export interface AutoTradeLogEntry {
   id: number;
   timestamp: string;
-  type: "scan" | "signal" | "trade" | "skip" | "error" | "start" | "stop";
+  type: "scan" | "signal" | "trade" | "skip" | "error" | "start" | "stop" | "news";
   symbol?: string;
   message: string;
   details?: Record<string, any>;
@@ -21,6 +21,10 @@ let nextLogId = 1;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let isRunning = false;
 let lastRunTime: string | null = null;
+
+export function addAutoTradeLog(type: AutoTradeLogEntry["type"], message: string, symbol?: string, details?: Record<string, any>) {
+  addLog(type, message, symbol, details);
+}
 
 function addLog(type: AutoTradeLogEntry["type"], message: string, symbol?: string, details?: Record<string, any>) {
   const entry: AutoTradeLogEntry = {

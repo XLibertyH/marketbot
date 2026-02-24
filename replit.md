@@ -18,6 +18,7 @@ AI-powered stock trading bot with real-time dashboard. Supports simulation mode 
 - News sentiment analysis (real news via Finnhub when live)
 - Paper trading via Alpaca (place orders, view positions, order history)
 - **Auto-trading**: AI scans watchlist on a timer, places trades when confidence exceeds threshold
+- **Breaking news monitor**: Polls Finnhub every 60s for new headlines, triggers immediate AI analysis
 - Bot settings with risk management configuration
 - Dual mode: Simulation (mock data) or Live (Finnhub real market data)
 
@@ -33,6 +34,16 @@ AI-powered stock trading bot with real-time dashboard. Supports simulation mode 
 - Settings: `autoTradeInterval` (minutes), `autoTradeMinConfidence` (0-1), `autoTradePositionSize` ($)
 - Starts/stops automatically when autoTrade setting is toggled
 - Also starts on server boot if autoTrade was enabled
+
+## News Monitor (`server/newsMonitor.ts`)
+- Polls Finnhub company-news endpoint every 60 seconds for each watchlist stock
+- On startup, indexes all existing headlines so only truly new ones trigger analysis
+- When new headlines detected: logs them, triggers immediate AI analysis with the fresh headlines
+- If auto-trade is enabled, places orders based on the news-driven AI signal
+- Activity shows in the same Dashboard log with orange newspaper icon
+- Automatically starts when simulation mode is turned OFF (real Finnhub data)
+- Stops when simulation mode is turned ON
+- Only runs in live data mode (requires Finnhub API key)
 
 ## Trading Safety Features
 - **Max Order Value**: Server-enforced cap on individual order value (default $5,000)
@@ -55,6 +66,7 @@ server/finnhub.ts      - Finnhub API client (quotes, candles, news)
 server/alpaca.ts       - Alpaca trading client (account, orders, positions)
 server/tradingGuards.ts - Server-side order validation and safety checks
 server/autoTrader.ts   - Auto-trading engine (signal scan + order execution)
+server/newsMonitor.ts  - Breaking news monitor (polls Finnhub, triggers AI)
 server/aiAnalysis.ts   - OpenAI-powered stock analysis
 client/src/App.tsx     - Main app with sidebar navigation
 client/src/pages/      - Dashboard, Trading, Watchlist, Signals, News, Settings
@@ -74,7 +86,7 @@ client/src/pages/      - Dashboard, Trading, Watchlist, Signals, News, Settings
 - GET /api/alpaca/positions, DELETE /api/alpaca/positions/:symbol
 - GET /api/alpaca/orders, POST /api/alpaca/orders, DELETE /api/alpaca/orders/:id
 - POST /api/alpaca/orders/preflight (safety check before placing order)
-- GET /api/autotrade/status (running state, last run time)
+- GET /api/autotrade/status (running state, last run time, news monitor state)
 - GET /api/autotrade/log (activity log entries)
 - POST /api/autotrade/run (trigger immediate scan)
 

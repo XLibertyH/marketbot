@@ -10,7 +10,7 @@ import {
 import {
   TrendingUp, TrendingDown, DollarSign, BarChart3, Activity, Zap,
   ArrowUpRight, ArrowDownRight, Minus, Bot, Play, Square, Search,
-  ShoppingCart, AlertCircle, SkipForward,
+  ShoppingCart, AlertCircle, SkipForward, Newspaper,
 } from "lucide-react";
 import type { StockQuote, TradingSignal, HistoricalDataPoint, BotSettings } from "@shared/schema";
 
@@ -34,7 +34,7 @@ export default function Dashboard() {
     queryKey: ["/api/settings"],
   });
 
-  const { data: autoTradeStatus } = useQuery<{ running: boolean; lastRun: string | null; logCount: number }>({
+  const { data: autoTradeStatus } = useQuery<{ running: boolean; lastRun: string | null; logCount: number; newsMonitorRunning: boolean }>({
     queryKey: ["/api/autotrade/status"],
     refetchInterval: 10000,
   });
@@ -240,14 +240,17 @@ export default function Dashboard() {
           )}
         </CardContent>
       </Card>
-      {(autoTradeStatus?.running || (autoTradeLog && autoTradeLog.length > 0)) && (
+      {(autoTradeStatus?.running || autoTradeStatus?.newsMonitorRunning || (autoTradeLog && autoTradeLog.length > 0)) && (
         <Card data-testid="card-auto-trade-activity">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <Bot className="h-5 w-5" />
               Auto-Trade Activity
               {autoTradeStatus?.running && (
-                <Badge className="bg-emerald-500/15 text-emerald-600 border-0 ml-2">Running</Badge>
+                <Badge className="bg-emerald-500/15 text-emerald-600 border-0 ml-2">Auto-Trade On</Badge>
+              )}
+              {autoTradeStatus?.newsMonitorRunning && (
+                <Badge className="bg-orange-500/15 text-orange-600 border-0 ml-2">News Monitor On</Badge>
               )}
             </CardTitle>
           </CardHeader>
@@ -264,6 +267,7 @@ export default function Dashboard() {
                       {entry.type === "error" && <AlertCircle className="h-3.5 w-3.5 text-red-500" />}
                       {entry.type === "start" && <Play className="h-3.5 w-3.5 text-emerald-500" />}
                       {entry.type === "stop" && <Square className="h-3.5 w-3.5 text-amber-500" />}
+                      {entry.type === "news" && <Newspaper className="h-3.5 w-3.5 text-orange-500" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">

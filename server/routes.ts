@@ -7,6 +7,7 @@ import { getAccount, getPositions, getOrders, placeOrder, cancelOrder, cancelAll
 import { validateOrder, recordOrderPlaced, preflightCheck } from "./tradingGuards";
 import { analyzeStock } from "./aiAnalysis";
 import { getAutoTradeLog, getAutoTradeStatus, restartAutoTrader, startAutoTrader } from "./autoTrader";
+import { startNewsMonitor, stopNewsMonitor, restartNewsMonitor, isNewsMonitorRunning } from "./newsMonitor";
 import { insertWatchlistSchema, insertBotSettingsSchema } from "@shared/schema";
 import type { StockQuote, HistoricalDataPoint } from "@shared/schema";
 
@@ -28,6 +29,10 @@ export async function registerRoutes(
 
       if (req.body.autoTrade !== undefined || req.body.autoTradeInterval !== undefined) {
         await restartAutoTrader();
+      }
+
+      if (req.body.simulationMode !== undefined) {
+        await restartNewsMonitor();
       }
 
       res.json(settings);
@@ -397,7 +402,8 @@ export async function registerRoutes(
   });
 
   app.get("/api/autotrade/status", (_req, res) => {
-    res.json(getAutoTradeStatus());
+    const status = getAutoTradeStatus();
+    res.json({ ...status, newsMonitorRunning: isNewsMonitorRunning() });
   });
 
   app.get("/api/autotrade/log", (req, res) => {
@@ -421,6 +427,9 @@ export async function registerRoutes(
   const settings = await storage.getSettings();
   if (settings.autoTrade) {
     startAutoTrader().catch(err => console.error("Failed to start auto-trader:", err));
+  }
+  if (!settings.simulationMode) {
+    startNewsMonitor().catch(err => console.error("Failed to start news monitor:", err));
   }
 
   return httpServer;
