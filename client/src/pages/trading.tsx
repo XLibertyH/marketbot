@@ -15,7 +15,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   Wallet, TrendingUp, TrendingDown, ShoppingCart, X, RefreshCw, DollarSign,
-  ArrowUpRight, ArrowDownRight, Package, Clock, AlertTriangle, Shield, Lock
+  ArrowUpRight, ArrowDownRight, Package, Clock, AlertTriangle, Shield
 } from "lucide-react";
 import { useState } from "react";
 import type { BotSettings } from "@shared/schema";
@@ -84,7 +84,6 @@ export default function Trading() {
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [orderTif, setOrderTif] = useState<"day" | "gtc">("day");
   const [limitPrice, setLimitPrice] = useState("");
-  const [tradingPin, setTradingPin] = useState("");
   const [orderDialogOpen, setOrderDialogOpen] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [preflightData, setPreflightData] = useState<PreflightResult | null>(null);
@@ -114,7 +113,7 @@ export default function Trading() {
   });
 
   const placeOrderMutation = useMutation({
-    mutationFn: (data: { symbol: string; qty: number; side: string; type: string; time_in_force: string; limit_price?: number; pin?: string }) =>
+    mutationFn: (data: { symbol: string; qty: number; side: string; type: string; time_in_force: string; limit_price?: number }) =>
       apiRequest("POST", "/api/alpaca/orders", data),
     onSuccess: async (res) => {
       const data = await res.json();
@@ -161,7 +160,6 @@ export default function Trading() {
     setOrderSymbol("");
     setOrderQty("1");
     setLimitPrice("");
-    setTradingPin("");
     setPreflightData(null);
   };
 
@@ -195,12 +193,10 @@ export default function Trading() {
       type: orderType,
       time_in_force: orderTif,
       limit_price: orderType === "limit" && limitPrice ? Number(limitPrice) : undefined,
-      pin: tradingPin || undefined,
     });
   };
 
   const isLive = status?.isLive || false;
-  const needsPin = isLive && !!settings?.tradingPin;
 
   if (status?.connected === false) {
     return (
@@ -421,20 +417,6 @@ export default function Trading() {
                   </div>
                 )}
 
-                {needsPin && (
-                  <div>
-                    <Label className="flex items-center gap-1">
-                      <Lock className="h-3 w-3" /> Trading PIN
-                    </Label>
-                    <Input
-                      type="password"
-                      placeholder="Enter your trading PIN"
-                      value={tradingPin}
-                      onChange={(e) => setTradingPin(e.target.value)}
-                      data-testid="input-trading-pin"
-                    />
-                  </div>
-                )}
               </div>
 
               <DialogFooter className="gap-2">
@@ -443,7 +425,7 @@ export default function Trading() {
                 </Button>
                 <Button
                   onClick={handleConfirmOrder}
-                  disabled={placeOrderMutation.isPending || (needsPin && !tradingPin)}
+                  disabled={placeOrderMutation.isPending}
                   className={isLive
                     ? "bg-red-600 hover:bg-red-700"
                     : orderSide === "buy" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"}
@@ -467,7 +449,6 @@ export default function Trading() {
             <p className="text-xs text-red-500/80">
               All orders will be executed with real money. Safety limits: max ${settings?.maxOrderValue?.toLocaleString() || "5,000"}/order,
               max {settings?.maxDailyOrders || 20} orders/day, ${settings?.maxDailyLoss?.toLocaleString() || "1,000"} daily loss limit.
-              {settings?.tradingPin ? " PIN required." : " Set a trading PIN in Settings for extra security."}
             </p>
           </div>
         </div>

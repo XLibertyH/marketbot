@@ -11,13 +11,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, Gauge, Zap, Lock, AlertTriangle } from "lucide-react";
+import { Shield, Gauge, Zap, AlertTriangle } from "lucide-react";
 import type { BotSettings } from "@shared/schema";
 import { useState } from "react";
 
 export default function Settings() {
   const { toast } = useToast();
-  const [pinInput, setPinInput] = useState("");
   const [symbolsInput, setSymbolsInput] = useState("");
   const [symbolsLoaded, setSymbolsLoaded] = useState(false);
 
@@ -193,46 +192,6 @@ export default function Settings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div>
-            <Label className="text-base">Trading PIN</Label>
-            <p className="text-sm text-muted-foreground mt-1">
-              Required before placing orders in live trading mode. Leave empty to disable.
-            </p>
-            <div className="flex items-center gap-2 mt-2">
-              <Input
-                type="password"
-                placeholder={settings.tradingPin ? "PIN is set (enter new to change)" : "Set a PIN"}
-                value={pinInput}
-                onChange={(e) => setPinInput(e.target.value)}
-                className="max-w-[200px]"
-                data-testid="input-trading-pin"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  updateSettings.mutate({ tradingPin: pinInput });
-                  setPinInput("");
-                }}
-                disabled={!pinInput}
-                data-testid="button-set-pin"
-              >
-                {settings.tradingPin ? "Update" : "Set PIN"}
-              </Button>
-              {settings.tradingPin && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-red-500"
-                  onClick={() => updateSettings.mutate({ tradingPin: "" })}
-                  data-testid="button-clear-pin"
-                >
-                  Clear
-                </Button>
-              )}
-            </div>
-          </div>
-
           <div>
             <div className="flex items-center justify-between">
               <Label className="text-base">Max Order Value</Label>

@@ -36,9 +36,6 @@ export async function validateOrder(params: {
   const warnings: string[] = [];
   const live = isLiveTrading();
 
-  if (live && settings.tradingPin && params.pin !== settings.tradingPin) {
-    return { allowed: false, reason: "Invalid trading PIN", warnings, isLive: live };
-  }
 
   if (params.qty <= 0 || !Number.isFinite(params.qty)) {
     return { allowed: false, reason: "Invalid quantity", warnings, isLive: live };
