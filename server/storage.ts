@@ -34,6 +34,12 @@ export class MemStorage implements IStorage {
       stopLossPercent: 5,
       takeProfitPercent: 10,
       autoTrade: false,
+      tradingPin: "",
+      maxOrderValue: 5000,
+      maxDailyLoss: 1000,
+      maxDailyOrders: 20,
+      requireConfirmation: true,
+      allowedSymbols: "",
     };
 
     const defaultStocks = [

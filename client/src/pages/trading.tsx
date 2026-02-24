@@ -15,9 +15,10 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   Wallet, TrendingUp, TrendingDown, ShoppingCart, X, RefreshCw, DollarSign,
-  ArrowUpRight, ArrowDownRight, Package, Clock, AlertTriangle
+  ArrowUpRight, ArrowDownRight, Package, Clock, AlertTriangle, Shield, Lock
 } from "lucide-react";
 import { useState } from "react";
+import type { BotSettings } from "@shared/schema";
 
 interface AlpacaAccount {
   id: string;
@@ -63,6 +64,18 @@ interface AlpacaOrder {
   filled_at: string | null;
 }
 
+interface PreflightResult {
+  estimatedValue: number;
+  accountEquity: number;
+  buyingPower: number;
+  dailyOrderCount: number;
+  maxDailyOrders: number;
+  dailyPL: number;
+  maxDailyLoss: number;
+  isLive: boolean;
+  warnings: string[];
+}
+
 export default function Trading() {
   const { toast } = useToast();
   const [orderSymbol, setOrderSymbol] = useState("");
@@ -71,10 +84,18 @@ export default function Trading() {
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [orderTif, setOrderTif] = useState<"day" | "gtc">("day");
   const [limitPrice, setLimitPrice] = useState("");
+  const [tradingPin, setTradingPin] = useState("");
   const [orderDialogOpen, setOrderDialogOpen] = useState(false);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [preflightData, setPreflightData] = useState<PreflightResult | null>(null);
+  const [preflightLoading, setPreflightLoading] = useState(false);
 
-  const { data: status } = useQuery<{ connected: boolean }>({
+  const { data: status } = useQuery<{ connected: boolean; isLive: boolean }>({
     queryKey: ["/api/alpaca/status"],
+  });
+
+  const { data: settings } = useQuery<BotSettings>({
+    queryKey: ["/api/settings"],
   });
 
   const { data: account, isLoading: accountLoading } = useQuery<AlpacaAccount>({
@@ -93,20 +114,21 @@ export default function Trading() {
   });
 
   const placeOrderMutation = useMutation({
-    mutationFn: (data: { symbol: string; qty: number; side: string; type: string; time_in_force: string; limit_price?: number }) =>
+    mutationFn: (data: { symbol: string; qty: number; side: string; type: string; time_in_force: string; limit_price?: number; pin?: string }) =>
       apiRequest("POST", "/api/alpaca/orders", data),
-    onSuccess: () => {
+    onSuccess: async (res) => {
+      const data = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/alpaca/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/alpaca/account"] });
       queryClient.invalidateQueries({ queryKey: ["/api/alpaca/positions"] });
-      toast({ title: "Order placed successfully" });
+      const warningText = data.warnings?.length ? `\n${data.warnings.join("\n")}` : "";
+      toast({ title: "Order placed successfully", description: warningText || undefined });
+      setConfirmDialogOpen(false);
       setOrderDialogOpen(false);
-      setOrderSymbol("");
-      setOrderQty("1");
-      setLimitPrice("");
+      resetOrderForm();
     },
     onError: (error: Error) => {
-      toast({ title: "Order failed", description: error.message, variant: "destructive" });
+      toast({ title: "Order blocked", description: error.message, variant: "destructive" });
     },
   });
 
@@ -135,8 +157,37 @@ export default function Trading() {
     queryClient.invalidateQueries({ queryKey: ["/api/alpaca/orders"] });
   };
 
-  const handlePlaceOrder = () => {
+  const resetOrderForm = () => {
+    setOrderSymbol("");
+    setOrderQty("1");
+    setLimitPrice("");
+    setTradingPin("");
+    setPreflightData(null);
+  };
+
+  const handleReviewOrder = async () => {
     if (!orderSymbol || !orderQty) return;
+    setPreflightLoading(true);
+    try {
+      const res = await apiRequest("POST", "/api/alpaca/orders/preflight", {
+        symbol: orderSymbol.toUpperCase(),
+        qty: Number(orderQty),
+        side: orderSide,
+        type: orderType,
+        limit_price: orderType === "limit" && limitPrice ? Number(limitPrice) : undefined,
+      });
+      const data = await res.json();
+      setPreflightData(data);
+      setOrderDialogOpen(false);
+      setConfirmDialogOpen(true);
+    } catch (error: any) {
+      toast({ title: "Preflight check failed", description: error.message, variant: "destructive" });
+    } finally {
+      setPreflightLoading(false);
+    }
+  };
+
+  const handleConfirmOrder = () => {
     placeOrderMutation.mutate({
       symbol: orderSymbol.toUpperCase(),
       qty: Number(orderQty),
@@ -144,22 +195,26 @@ export default function Trading() {
       type: orderType,
       time_in_force: orderTif,
       limit_price: orderType === "limit" && limitPrice ? Number(limitPrice) : undefined,
+      pin: tradingPin || undefined,
     });
   };
+
+  const isLive = status?.isLive || false;
+  const needsPin = isLive && !!settings?.tradingPin;
 
   if (status?.connected === false) {
     return (
       <div className="space-y-6" data-testid="trading-page">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-trading-title">Paper Trading</h1>
-          <p className="text-muted-foreground">Alpaca paper trading integration</p>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-trading-title">Trading</h1>
+          <p className="text-muted-foreground">Alpaca trading integration</p>
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <AlertTriangle className="h-12 w-12 text-amber-500 mb-4" />
             <h2 className="text-lg font-semibold mb-2">Alpaca Not Connected</h2>
             <p className="text-muted-foreground text-center max-w-md">
-              Your Alpaca paper trading API keys could not be verified. Please check that your API key and secret key are correctly set in your environment secrets.
+              Your Alpaca API keys could not be verified. Please check that your API key and secret key are correctly set in your environment secrets.
             </p>
           </CardContent>
         </Card>
@@ -179,18 +234,29 @@ export default function Trading() {
     <div className="space-y-6" data-testid="trading-page">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-trading-title">Paper Trading</h1>
-          <p className="text-muted-foreground">Alpaca paper trading account</p>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-trading-title">
+            {isLive ? "Live Trading" : "Paper Trading"}
+          </h1>
+          <p className="text-muted-foreground">
+            {isLive ? "Alpaca live trading account — real money" : "Alpaca paper trading account"}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge className="bg-emerald-500/15 text-emerald-600 border-0" data-testid="badge-paper">
-            Paper Account
-          </Badge>
+          {isLive ? (
+            <Badge className="bg-red-500 hover:bg-red-600 text-white" data-testid="badge-live">
+              <AlertTriangle className="h-3 w-3 mr-1" />
+              LIVE — Real Money
+            </Badge>
+          ) : (
+            <Badge className="bg-emerald-500/15 text-emerald-600 border-0" data-testid="badge-paper">
+              Paper Account
+            </Badge>
+          )}
           <Button variant="outline" size="sm" onClick={refreshAll} data-testid="button-refresh-trading">
             <RefreshCw className="h-4 w-4 mr-1" />
             Refresh
           </Button>
-          <Dialog open={orderDialogOpen} onOpenChange={setOrderDialogOpen}>
+          <Dialog open={orderDialogOpen} onOpenChange={(open) => { setOrderDialogOpen(open); if (!open) resetOrderForm(); }}>
             <DialogTrigger asChild>
               <Button data-testid="button-new-order">
                 <ShoppingCart className="h-4 w-4 mr-2" />
@@ -199,9 +265,23 @@ export default function Trading() {
             </DialogTrigger>
             <DialogContent data-testid="dialog-new-order">
               <DialogHeader>
-                <DialogTitle>Place Paper Trade</DialogTitle>
-                <DialogDescription>Submit an order to your Alpaca paper trading account</DialogDescription>
+                <DialogTitle>
+                  {isLive ? "Place Live Trade" : "Place Paper Trade"}
+                </DialogTitle>
+                <DialogDescription>
+                  {isLive
+                    ? "This order will be placed on your live account with real money"
+                    : "Submit an order to your Alpaca paper trading account"}
+                </DialogDescription>
               </DialogHeader>
+
+              {isLive && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-600 text-sm" data-testid="warning-live-order">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                  <span>You are placing a LIVE order. Real money will be used.</span>
+                </div>
+              )}
+
               <div className="space-y-4 py-2">
                 <div>
                   <Label>Symbol</Label>
@@ -272,18 +352,126 @@ export default function Trading() {
               </div>
               <DialogFooter>
                 <Button
-                  onClick={handlePlaceOrder}
-                  disabled={!orderSymbol || !orderQty || placeOrderMutation.isPending}
-                  className={orderSide === "buy" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"}
-                  data-testid="button-submit-order"
+                  onClick={handleReviewOrder}
+                  disabled={!orderSymbol || !orderQty || preflightLoading}
+                  variant="outline"
+                  data-testid="button-review-order"
                 >
-                  {placeOrderMutation.isPending ? "Placing..." : `${orderSide === "buy" ? "Buy" : "Sell"} ${orderSymbol || "..."}`}
+                  <Shield className="h-4 w-4 mr-2" />
+                  {preflightLoading ? "Checking..." : "Review Order"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
+            <DialogContent data-testid="dialog-confirm-order">
+              <DialogHeader>
+                <DialogTitle>
+                  {isLive ? "Confirm Live Order" : "Confirm Order"}
+                </DialogTitle>
+                <DialogDescription>Review the details below before confirming</DialogDescription>
+              </DialogHeader>
+
+              {isLive && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-600 text-sm font-medium" data-testid="warning-live-confirm">
+                  <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+                  <span>LIVE TRADING — This will execute with real money. This action cannot be undone.</span>
+                </div>
+              )}
+
+              <div className="space-y-3 py-2">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 p-4 rounded-lg bg-muted/50 border">
+                  <div className="text-sm text-muted-foreground">Symbol</div>
+                  <div className="text-sm font-semibold">{orderSymbol}</div>
+                  <div className="text-sm text-muted-foreground">Side</div>
+                  <div className={`text-sm font-semibold ${orderSide === "buy" ? "text-emerald-600" : "text-red-500"}`}>
+                    {orderSide.toUpperCase()}
+                  </div>
+                  <div className="text-sm text-muted-foreground">Quantity</div>
+                  <div className="text-sm font-semibold">{orderQty} shares</div>
+                  <div className="text-sm text-muted-foreground">Type</div>
+                  <div className="text-sm font-semibold">{orderType}{orderType === "limit" ? ` @ $${limitPrice}` : ""}</div>
+                  <div className="text-sm text-muted-foreground">Time in Force</div>
+                  <div className="text-sm font-semibold">{orderTif.toUpperCase()}</div>
+                  {preflightData && (
+                    <>
+                      <div className="text-sm text-muted-foreground">Est. Value</div>
+                      <div className="text-sm font-semibold">${preflightData.estimatedValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                      <div className="text-sm text-muted-foreground">Buying Power</div>
+                      <div className="text-sm font-semibold">${preflightData.buyingPower.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                      <div className="text-sm text-muted-foreground">Daily Orders</div>
+                      <div className="text-sm font-semibold">{preflightData.dailyOrderCount} / {preflightData.maxDailyOrders}</div>
+                      <div className="text-sm text-muted-foreground">Daily P&L</div>
+                      <div className={`text-sm font-semibold ${preflightData.dailyPL >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                        {preflightData.dailyPL >= 0 ? "+" : ""}${preflightData.dailyPL.toFixed(2)}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {preflightData?.warnings && preflightData.warnings.length > 0 && (
+                  <div className="space-y-2">
+                    {preflightData.warnings.map((w, i) => (
+                      <div key={i} className="flex items-start gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-700 text-sm" data-testid={`warning-preflight-${i}`}>
+                        <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <span>{w}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {needsPin && (
+                  <div>
+                    <Label className="flex items-center gap-1">
+                      <Lock className="h-3 w-3" /> Trading PIN
+                    </Label>
+                    <Input
+                      type="password"
+                      placeholder="Enter your trading PIN"
+                      value={tradingPin}
+                      onChange={(e) => setTradingPin(e.target.value)}
+                      data-testid="input-trading-pin"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => { setConfirmDialogOpen(false); setOrderDialogOpen(true); }} data-testid="button-back-to-edit">
+                  Back
+                </Button>
+                <Button
+                  onClick={handleConfirmOrder}
+                  disabled={placeOrderMutation.isPending || (needsPin && !tradingPin)}
+                  className={isLive
+                    ? "bg-red-600 hover:bg-red-700"
+                    : orderSide === "buy" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"}
+                  data-testid="button-confirm-order"
+                >
+                  {placeOrderMutation.isPending ? "Placing..." : isLive
+                    ? `Confirm LIVE ${orderSide.toUpperCase()}`
+                    : `Confirm ${orderSide === "buy" ? "Buy" : "Sell"} ${orderSymbol}`}
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
         </div>
       </div>
+
+      {isLive && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-red-500/10 border border-red-500/30" data-testid="banner-live-mode">
+          <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-red-600">Live Trading Mode Active</p>
+            <p className="text-xs text-red-500/80">
+              All orders will be executed with real money. Safety limits: max ${settings?.maxOrderValue?.toLocaleString() || "5,000"}/order,
+              max {settings?.maxDailyOrders || 20} orders/day, ${settings?.maxDailyLoss?.toLocaleString() || "1,000"} daily loss limit.
+              {settings?.tradingPin ? " PIN required." : " Set a trading PIN in Settings for extra security."}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card data-testid="card-equity">
@@ -353,7 +541,7 @@ export default function Trading() {
         <Card data-testid="card-positions">
           <CardHeader>
             <CardTitle className="text-lg">Positions</CardTitle>
-            <CardDescription>Current holdings in your paper account</CardDescription>
+            <CardDescription>Current holdings in your {isLive ? "live" : "paper"} account</CardDescription>
           </CardHeader>
           <CardContent>
             {positionsLoading ? (

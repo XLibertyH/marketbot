@@ -11,17 +11,21 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Shield, Gauge, Zap, CheckCircle, XCircle } from "lucide-react";
+import { Shield, Gauge, Zap, Lock, AlertTriangle } from "lucide-react";
 import type { BotSettings } from "@shared/schema";
+import { useState } from "react";
 
 export default function Settings() {
   const { toast } = useToast();
+  const [pinInput, setPinInput] = useState("");
+  const [symbolsInput, setSymbolsInput] = useState("");
+  const [symbolsLoaded, setSymbolsLoaded] = useState(false);
 
   const { data: settings, isLoading } = useQuery<BotSettings>({
     queryKey: ["/api/settings"],
   });
 
-  const { data: alpacaStatus } = useQuery<{ connected: boolean }>({
+  const { data: alpacaStatus } = useQuery<{ connected: boolean; isLive: boolean }>({
     queryKey: ["/api/alpaca/status"],
   });
 
@@ -35,6 +39,13 @@ export default function Settings() {
   });
 
   if (isLoading || !settings) return null;
+
+  if (!symbolsLoaded && settings.allowedSymbols !== undefined) {
+    setSymbolsInput(settings.allowedSymbols);
+    setSymbolsLoaded(true);
+  }
+
+  const isLive = alpacaStatus?.isLive || false;
 
   return (
     <div className="space-y-6 max-w-2xl" data-testid="settings-page">
@@ -168,6 +179,168 @@ export default function Settings() {
         </CardContent>
       </Card>
 
+      <Card data-testid="card-safety-settings">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Lock className="h-5 w-5" />
+            Trading Safety Guards
+          </CardTitle>
+          <CardDescription>
+            Protections to prevent accidental or excessive trades
+            {isLive && (
+              <span className="text-red-500 font-medium ml-1">— Live trading active</span>
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div>
+            <Label className="text-base">Trading PIN</Label>
+            <p className="text-sm text-muted-foreground mt-1">
+              Required before placing orders in live trading mode. Leave empty to disable.
+            </p>
+            <div className="flex items-center gap-2 mt-2">
+              <Input
+                type="password"
+                placeholder={settings.tradingPin ? "PIN is set (enter new to change)" : "Set a PIN"}
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                className="max-w-[200px]"
+                data-testid="input-trading-pin"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  updateSettings.mutate({ tradingPin: pinInput });
+                  setPinInput("");
+                }}
+                disabled={!pinInput}
+                data-testid="button-set-pin"
+              >
+                {settings.tradingPin ? "Update" : "Set PIN"}
+              </Button>
+              {settings.tradingPin && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-red-500"
+                  onClick={() => updateSettings.mutate({ tradingPin: "" })}
+                  data-testid="button-clear-pin"
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <Label className="text-base">Max Order Value</Label>
+              <span className="text-sm font-medium" data-testid="text-max-order-value">${settings.maxOrderValue.toLocaleString()}</span>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Maximum estimated dollar value per individual order
+            </p>
+            <Slider
+              value={[settings.maxOrderValue]}
+              min={500}
+              max={50000}
+              step={500}
+              className="mt-3"
+              onValueChange={([value]) => updateSettings.mutate({ maxOrderValue: value })}
+              data-testid="slider-max-order-value"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+              <span>$500</span>
+              <span>$50,000</span>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <Label className="text-base">Daily Loss Limit</Label>
+              <span className="text-sm font-medium" data-testid="text-max-daily-loss">${settings.maxDailyLoss.toLocaleString()}</span>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Stop placing orders when daily losses exceed this amount
+            </p>
+            <Slider
+              value={[settings.maxDailyLoss]}
+              min={100}
+              max={10000}
+              step={100}
+              className="mt-3"
+              onValueChange={([value]) => updateSettings.mutate({ maxDailyLoss: value })}
+              data-testid="slider-max-daily-loss"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+              <span>$100</span>
+              <span>$10,000</span>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <Label className="text-base">Max Daily Orders</Label>
+              <span className="text-sm font-medium" data-testid="text-max-daily-orders">{settings.maxDailyOrders}</span>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Maximum number of orders per day
+            </p>
+            <Slider
+              value={[settings.maxDailyOrders]}
+              min={1}
+              max={100}
+              step={1}
+              className="mt-3"
+              onValueChange={([value]) => updateSettings.mutate({ maxDailyOrders: value })}
+              data-testid="slider-max-daily-orders"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+              <span>1</span>
+              <span>100</span>
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-base">Allowed Symbols</Label>
+            <p className="text-sm text-muted-foreground mt-1">
+              Restrict trading to specific symbols only. Comma-separated (e.g., AAPL,MSFT,GOOGL). Leave empty to allow all.
+            </p>
+            <div className="flex items-center gap-2 mt-2">
+              <Input
+                placeholder="AAPL,MSFT,GOOGL"
+                value={symbolsInput}
+                onChange={(e) => setSymbolsInput(e.target.value.toUpperCase())}
+                data-testid="input-allowed-symbols"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => updateSettings.mutate({ allowedSymbols: symbolsInput })}
+                data-testid="button-save-symbols"
+              >
+                Save
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-base">Order Confirmation</Label>
+              <p className="text-sm text-muted-foreground mt-1">
+                Show a review screen before submitting every order
+              </p>
+            </div>
+            <Switch
+              checked={settings.requireConfirmation}
+              onCheckedChange={(checked) => updateSettings.mutate({ requireConfirmation: checked })}
+              data-testid="switch-require-confirmation"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       <Card data-testid="card-api-status">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -183,9 +356,17 @@ export default function Settings() {
               <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white">Connected</Badge>
             </div>
             <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-              <span className="font-medium">Alpaca (Paper Trading)</span>
+              <span className="font-medium">Alpaca (Trading)</span>
               {alpacaStatus?.connected ? (
-                <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white">Connected</Badge>
+                <div className="flex items-center gap-2">
+                  {isLive && (
+                    <Badge className="bg-red-500 hover:bg-red-600 text-white">
+                      <AlertTriangle className="h-3 w-3 mr-1" />
+                      LIVE
+                    </Badge>
+                  )}
+                  <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white">Connected</Badge>
+                </div>
               ) : (
                 <Badge variant="outline" className="text-red-500 border-red-500/30">Not Connected</Badge>
               )}

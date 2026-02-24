@@ -1,5 +1,8 @@
-const PAPER_BASE = "https://paper-api.alpaca.markets";
-const DATA_BASE = "https://data.alpaca.markets";
+const ALPACA_BASE = process.env.ALPACA_BASE_URL || "https://paper-api.alpaca.markets";
+
+function isLiveTrading(): boolean {
+  return ALPACA_BASE.includes("api.alpaca.markets") && !ALPACA_BASE.includes("paper");
+}
 
 function getHeaders(): Record<string, string> {
   const key = process.env.ALPACA_API_KEY;
@@ -28,7 +31,7 @@ async function alpacaGet(base: string, path: string, params?: Record<string, str
 }
 
 async function alpacaPost(path: string, body: Record<string, any>): Promise<any> {
-  const res = await fetch(`${PAPER_BASE}${path}`, {
+  const res = await fetch(`${ALPACA_BASE}${path}`, {
     method: "POST",
     headers: getHeaders(),
     body: JSON.stringify(body),
@@ -41,7 +44,7 @@ async function alpacaPost(path: string, body: Record<string, any>): Promise<any>
 }
 
 async function alpacaDelete(path: string): Promise<void> {
-  const res = await fetch(`${PAPER_BASE}${path}`, {
+  const res = await fetch(`${ALPACA_BASE}${path}`, {
     method: "DELETE",
     headers: getHeaders(),
   });
@@ -110,20 +113,22 @@ export interface AlpacaOrder {
   extended_hours: boolean;
 }
 
+export { isLiveTrading };
+
 export async function getAccount(): Promise<AlpacaAccount> {
-  return alpacaGet(PAPER_BASE, "/v2/account");
+  return alpacaGet(ALPACA_BASE, "/v2/account");
 }
 
 export async function getPositions(): Promise<AlpacaPosition[]> {
-  return alpacaGet(PAPER_BASE, "/v2/positions");
+  return alpacaGet(ALPACA_BASE, "/v2/positions");
 }
 
 export async function getPosition(symbol: string): Promise<AlpacaPosition> {
-  return alpacaGet(PAPER_BASE, `/v2/positions/${symbol}`);
+  return alpacaGet(ALPACA_BASE, `/v2/positions/${symbol}`);
 }
 
 export async function getOrders(status: string = "all", limit: number = 50): Promise<AlpacaOrder[]> {
-  return alpacaGet(PAPER_BASE, "/v2/orders", { status, limit: limit.toString(), direction: "desc" });
+  return alpacaGet(ALPACA_BASE, "/v2/orders", { status, limit: limit.toString(), direction: "desc" });
 }
 
 export async function placeOrder(params: {
@@ -156,7 +161,7 @@ export async function cancelAllOrders(): Promise<void> {
 }
 
 export async function closePosition(symbol: string): Promise<AlpacaOrder> {
-  const res = await fetch(`${PAPER_BASE}/v2/positions/${symbol}`, {
+  const res = await fetch(`${ALPACA_BASE}/v2/positions/${symbol}`, {
     method: "DELETE",
     headers: getHeaders(),
   });

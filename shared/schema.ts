@@ -39,6 +39,12 @@ export const botSettings = pgTable("bot_settings", {
   stopLossPercent: real("stop_loss_percent").default(5).notNull(),
   takeProfitPercent: real("take_profit_percent").default(10).notNull(),
   autoTrade: boolean("auto_trade").default(false).notNull(),
+  tradingPin: text("trading_pin").default("").notNull(),
+  maxOrderValue: real("max_order_value").default(5000).notNull(),
+  maxDailyLoss: real("max_daily_loss").default(1000).notNull(),
+  maxDailyOrders: integer("max_daily_orders").default(20).notNull(),
+  requireConfirmation: boolean("require_confirmation").default(true).notNull(),
+  allowedSymbols: text("allowed_symbols").default("").notNull(),
 });
 
 export const insertWatchlistSchema = createInsertSchema(watchlistItems).omit({ id: true, addedAt: true });

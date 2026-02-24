@@ -3,7 +3,8 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { getMockQuote, getMockHistoricalData, getMockNews, getMockSignal } from "./mockData";
 import { getFinnhubQuote, getFinnhubCandles, getFinnhubNews } from "./finnhub";
-import { getAccount, getPositions, getOrders, placeOrder, cancelOrder, cancelAllOrders, closePosition, isAlpacaConnected } from "./alpaca";
+import { getAccount, getPositions, getOrders, placeOrder, cancelOrder, cancelAllOrders, closePosition, isAlpacaConnected, isLiveTrading } from "./alpaca";
+import { validateOrder, recordOrderPlaced, preflightCheck } from "./tradingGuards";
 import { analyzeStock } from "./aiAnalysis";
 import { insertWatchlistSchema, insertBotSettingsSchema } from "@shared/schema";
 import type { StockQuote, HistoricalDataPoint } from "@shared/schema";
@@ -321,14 +322,37 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/alpaca/orders/preflight", async (req, res) => {
+    try {
+      const { symbol, qty, side, type, limit_price } = req.body;
+      if (!symbol || !qty || !side || !type) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+      const check = await preflightCheck({ symbol, qty: Number(qty), side, type, limit_price: limit_price ? Number(limit_price) : undefined });
+      res.json(check);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   app.post("/api/alpaca/orders", async (req, res) => {
     try {
-      const { symbol, qty, side, type, time_in_force, limit_price, stop_price } = req.body;
+      const { symbol, qty, side, type, time_in_force, limit_price, stop_price, pin } = req.body;
       if (!symbol || !qty || !side || !type || !time_in_force) {
         return res.status(400).json({ error: "Missing required fields: symbol, qty, side, type, time_in_force" });
       }
+
+      const safety = await validateOrder({
+        symbol, qty: Number(qty), side, type, limit_price: limit_price ? Number(limit_price) : undefined, pin,
+      });
+
+      if (!safety.allowed) {
+        return res.status(403).json({ error: safety.reason, warnings: safety.warnings, blocked: true });
+      }
+
       const order = await placeOrder({ symbol, qty: Number(qty), side, type, time_in_force, limit_price: limit_price ? Number(limit_price) : undefined, stop_price: stop_price ? Number(stop_price) : undefined });
-      res.json(order);
+      recordOrderPlaced();
+      res.json({ ...order, warnings: safety.warnings, isLive: safety.isLive });
     } catch (error: any) {
       res.status(400).json({ error: error.message || "Failed to place order" });
     }
@@ -363,7 +387,7 @@ export async function registerRoutes(
 
   app.get("/api/alpaca/status", async (_req, res) => {
     const connected = await isAlpacaConnected();
-    res.json({ connected });
+    res.json({ connected, isLive: isLiveTrading() });
   });
 
   return httpServer;
