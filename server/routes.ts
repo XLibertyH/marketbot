@@ -6,6 +6,7 @@ import { getFinnhubQuote, getFinnhubCandles, getFinnhubNews } from "./finnhub";
 import { getAccount, getPositions, getOrders, placeOrder, cancelOrder, cancelAllOrders, closePosition, isAlpacaConnected, isLiveTrading } from "./alpaca";
 import { validateOrder, recordOrderPlaced, preflightCheck } from "./tradingGuards";
 import { analyzeStock } from "./aiAnalysis";
+import { getAutoTradeLog, getAutoTradeStatus, restartAutoTrader, startAutoTrader } from "./autoTrader";
 import { insertWatchlistSchema, insertBotSettingsSchema } from "@shared/schema";
 import type { StockQuote, HistoricalDataPoint } from "@shared/schema";
 
@@ -24,6 +25,11 @@ export async function registerRoutes(
       const partial = insertBotSettingsSchema.partial().safeParse(req.body);
       if (!partial.success) return res.status(400).json({ error: partial.error.message });
       const settings = await storage.updateSettings(partial.data);
+
+      if (req.body.autoTrade !== undefined || req.body.autoTradeInterval !== undefined) {
+        await restartAutoTrader();
+      }
+
       res.json(settings);
     } catch (error) {
       res.status(400).json({ error: "Invalid settings" });
@@ -337,13 +343,13 @@ export async function registerRoutes(
 
   app.post("/api/alpaca/orders", async (req, res) => {
     try {
-      const { symbol, qty, side, type, time_in_force, limit_price, stop_price, pin } = req.body;
+      const { symbol, qty, side, type, time_in_force, limit_price, stop_price } = req.body;
       if (!symbol || !qty || !side || !type || !time_in_force) {
         return res.status(400).json({ error: "Missing required fields: symbol, qty, side, type, time_in_force" });
       }
 
       const safety = await validateOrder({
-        symbol, qty: Number(qty), side, type, limit_price: limit_price ? Number(limit_price) : undefined, pin,
+        symbol, qty: Number(qty), side, type, limit_price: limit_price ? Number(limit_price) : undefined,
       });
 
       if (!safety.allowed) {
@@ -389,6 +395,33 @@ export async function registerRoutes(
     const connected = await isAlpacaConnected();
     res.json({ connected, isLive: isLiveTrading() });
   });
+
+  app.get("/api/autotrade/status", (_req, res) => {
+    res.json(getAutoTradeStatus());
+  });
+
+  app.get("/api/autotrade/log", (req, res) => {
+    const limit = parseInt(req.query.limit as string) || 50;
+    res.json(getAutoTradeLog(limit));
+  });
+
+  app.post("/api/autotrade/run", async (_req, res) => {
+    try {
+      const settings = await storage.getSettings();
+      if (!settings.autoTrade) {
+        return res.status(400).json({ error: "Auto-trade is not enabled. Turn it on in Settings first." });
+      }
+      await restartAutoTrader();
+      res.json({ ok: true, message: "Auto-trade scan triggered" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  const settings = await storage.getSettings();
+  if (settings.autoTrade) {
+    startAutoTrader().catch(err => console.error("Failed to start auto-trader:", err));
+  }
 
   return httpServer;
 }

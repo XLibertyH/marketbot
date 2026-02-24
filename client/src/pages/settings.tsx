@@ -85,16 +85,93 @@ export default function Settings() {
             <div>
               <Label className="text-base">Auto-Trade</Label>
               <p className="text-sm text-muted-foreground mt-1">
-                Automatically execute trades based on AI signals (requires live mode)
+                Automatically execute trades based on AI signals
               </p>
             </div>
-            <Switch
-              checked={settings.autoTrade}
-              disabled={settings.simulationMode}
-              onCheckedChange={(checked) => updateSettings.mutate({ autoTrade: checked })}
-              data-testid="switch-auto-trade"
-            />
+            <div className="flex items-center gap-3">
+              {settings.autoTrade && (
+                <Badge className="bg-emerald-500/15 text-emerald-600 border-0">Running</Badge>
+              )}
+              <Switch
+                checked={settings.autoTrade}
+                onCheckedChange={(checked) => updateSettings.mutate({ autoTrade: checked })}
+                data-testid="switch-auto-trade"
+              />
+            </div>
           </div>
+
+          {settings.autoTrade && (
+            <div className="space-y-4 pl-4 border-l-2 border-primary/20">
+              <div>
+                <div className="flex items-center justify-between">
+                  <Label className="text-base">Scan Interval</Label>
+                  <span className="text-sm font-medium" data-testid="text-auto-trade-interval">{settings.autoTradeInterval} min</span>
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  How often the bot analyzes your watchlist and places trades
+                </p>
+                <Slider
+                  value={[settings.autoTradeInterval]}
+                  min={1}
+                  max={60}
+                  step={1}
+                  className="mt-3"
+                  onValueChange={([value]) => updateSettings.mutate({ autoTradeInterval: value })}
+                  data-testid="slider-auto-trade-interval"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                  <span>1 min</span>
+                  <span>60 min</span>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between">
+                  <Label className="text-base">Min Confidence</Label>
+                  <span className="text-sm font-medium" data-testid="text-auto-trade-confidence">{(settings.autoTradeMinConfidence * 100).toFixed(0)}%</span>
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Only execute trades when AI confidence exceeds this threshold
+                </p>
+                <Slider
+                  value={[settings.autoTradeMinConfidence * 100]}
+                  min={50}
+                  max={95}
+                  step={5}
+                  className="mt-3"
+                  onValueChange={([value]) => updateSettings.mutate({ autoTradeMinConfidence: value / 100 })}
+                  data-testid="slider-auto-trade-confidence"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                  <span>50%</span>
+                  <span>95%</span>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between">
+                  <Label className="text-base">Position Size</Label>
+                  <span className="text-sm font-medium" data-testid="text-auto-trade-position-size">${settings.autoTradePositionSize.toLocaleString()}</span>
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Dollar amount to invest per auto-trade (calculates share quantity from price)
+                </p>
+                <Slider
+                  value={[settings.autoTradePositionSize]}
+                  min={100}
+                  max={5000}
+                  step={100}
+                  className="mt-3"
+                  onValueChange={([value]) => updateSettings.mutate({ autoTradePositionSize: value })}
+                  data-testid="slider-auto-trade-position-size"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                  <span>$100</span>
+                  <span>$5,000</span>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -181,7 +258,7 @@ export default function Settings() {
       <Card data-testid="card-safety-settings">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Lock className="h-5 w-5" />
+            <Shield className="h-5 w-5" />
             Trading Safety Guards
           </CardTitle>
           <CardDescription>

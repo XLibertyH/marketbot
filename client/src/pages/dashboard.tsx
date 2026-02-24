@@ -9,9 +9,10 @@ import {
 } from "recharts";
 import {
   TrendingUp, TrendingDown, DollarSign, BarChart3, Activity, Zap,
-  ArrowUpRight, ArrowDownRight, Minus,
+  ArrowUpRight, ArrowDownRight, Minus, Bot, Play, Square, Search,
+  ShoppingCart, AlertCircle, SkipForward,
 } from "lucide-react";
-import type { StockQuote, TradingSignal, HistoricalDataPoint } from "@shared/schema";
+import type { StockQuote, TradingSignal, HistoricalDataPoint, BotSettings } from "@shared/schema";
 
 export default function Dashboard() {
   const { data: summary, isLoading: summaryLoading } = useQuery<{
@@ -29,8 +30,20 @@ export default function Dashboard() {
     queryKey: ["/api/signals"],
   });
 
-  const { data: settings } = useQuery<{ simulationMode: boolean }>({
+  const { data: settings } = useQuery<BotSettings>({
     queryKey: ["/api/settings"],
+  });
+
+  const { data: autoTradeStatus } = useQuery<{ running: boolean; lastRun: string | null; logCount: number }>({
+    queryKey: ["/api/autotrade/status"],
+    refetchInterval: 10000,
+  });
+
+  const { data: autoTradeLog } = useQuery<Array<{
+    id: number; timestamp: string; type: string; symbol?: string; message: string; details?: Record<string, any>;
+  }>>({
+    queryKey: ["/api/autotrade/log"],
+    refetchInterval: 10000,
   });
 
   const { data: historyAAPL } = useQuery<HistoricalDataPoint[]>({
@@ -227,6 +240,51 @@ export default function Dashboard() {
           )}
         </CardContent>
       </Card>
+      {(autoTradeStatus?.running || (autoTradeLog && autoTradeLog.length > 0)) && (
+        <Card data-testid="card-auto-trade-activity">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Bot className="h-5 w-5" />
+              Auto-Trade Activity
+              {autoTradeStatus?.running && (
+                <Badge className="bg-emerald-500/15 text-emerald-600 border-0 ml-2">Running</Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {autoTradeLog && autoTradeLog.length > 0 ? (
+              <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                {autoTradeLog.slice(0, 20).map((entry) => (
+                  <div key={entry.id} className="flex items-start gap-2 text-sm py-1.5 border-b border-border last:border-0" data-testid={`autotrade-log-${entry.id}`}>
+                    <div className="mt-0.5">
+                      {entry.type === "trade" && <ShoppingCart className="h-3.5 w-3.5 text-emerald-500" />}
+                      {entry.type === "scan" && <Search className="h-3.5 w-3.5 text-blue-500" />}
+                      {entry.type === "signal" && <Activity className="h-3.5 w-3.5 text-purple-500" />}
+                      {entry.type === "skip" && <SkipForward className="h-3.5 w-3.5 text-muted-foreground" />}
+                      {entry.type === "error" && <AlertCircle className="h-3.5 w-3.5 text-red-500" />}
+                      {entry.type === "start" && <Play className="h-3.5 w-3.5 text-emerald-500" />}
+                      {entry.type === "stop" && <Square className="h-3.5 w-3.5 text-amber-500" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        {entry.symbol && <span className="font-semibold text-xs">{entry.symbol}</span>}
+                        <span className="text-muted-foreground truncate">{entry.message}</span>
+                      </div>
+                    </div>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {new Date(entry.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-center py-4">
+                No auto-trade activity yet. Enable Auto-Trade in Settings to get started.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

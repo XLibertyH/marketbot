@@ -1,7 +1,7 @@
 # TradeBot AI - Stock Trading Dashboard
 
 ## Overview
-AI-powered stock trading bot with real-time dashboard. Supports simulation mode with mock data for testing, live market data via Finnhub API, and paper trading via Alpaca.
+AI-powered stock trading bot with real-time dashboard. Supports simulation mode with mock data for testing, live market data via Finnhub API, and paper trading via Alpaca. Includes auto-trading engine that executes trades based on AI signal analysis.
 
 ## Architecture
 - **Frontend**: React + TypeScript + Vite + Tailwind CSS + shadcn/ui + Recharts
@@ -12,16 +12,29 @@ AI-powered stock trading bot with real-time dashboard. Supports simulation mode 
 - **Storage**: In-memory (MemStorage pattern)
 
 ## Key Features
-- Dashboard with portfolio overview, price charts, live quotes
+- Dashboard with portfolio overview, price charts, live quotes, auto-trade activity log
 - Watchlist management (add/remove stocks)
 - AI-powered trading signals (BUY/SELL/HOLD with confidence scores)
 - News sentiment analysis (real news via Finnhub when live)
 - Paper trading via Alpaca (place orders, view positions, order history)
+- **Auto-trading**: AI scans watchlist on a timer, places trades when confidence exceeds threshold
 - Bot settings with risk management configuration
 - Dual mode: Simulation (mock data) or Live (Finnhub real market data)
 
+## Auto-Trading Engine (`server/autoTrader.ts`)
+- Runs on configurable interval (default 5 minutes)
+- Scans all watchlist stocks, generates AI signals for each
+- Places BUY orders when signal is BUY and confidence >= threshold (default 75%)
+- Places SELL orders when signal is SELL and a position exists
+- Skips BUY if already holding a position in that stock
+- Respects all safety guards (max order value, daily loss limit, daily order limit, allowed symbols)
+- Calculates share quantity from position size setting and current price
+- Activity log stored in memory (last 100 entries), visible on Dashboard
+- Settings: `autoTradeInterval` (minutes), `autoTradeMinConfidence` (0-1), `autoTradePositionSize` ($)
+- Starts/stops automatically when autoTrade setting is toggled
+- Also starts on server boot if autoTrade was enabled
+
 ## Trading Safety Features
-- **Trading PIN**: Required for live trading orders (configurable in Settings)
 - **Max Order Value**: Server-enforced cap on individual order value (default $5,000)
 - **Daily Loss Limit**: Blocks new orders when daily losses exceed threshold (default $1,000)
 - **Daily Order Limit**: Maximum orders per day (default 20)
@@ -41,6 +54,7 @@ server/mockData.ts     - Mock data generators for simulation
 server/finnhub.ts      - Finnhub API client (quotes, candles, news)
 server/alpaca.ts       - Alpaca trading client (account, orders, positions)
 server/tradingGuards.ts - Server-side order validation and safety checks
+server/autoTrader.ts   - Auto-trading engine (signal scan + order execution)
 server/aiAnalysis.ts   - OpenAI-powered stock analysis
 client/src/App.tsx     - Main app with sidebar navigation
 client/src/pages/      - Dashboard, Trading, Watchlist, Signals, News, Settings
@@ -60,6 +74,9 @@ client/src/pages/      - Dashboard, Trading, Watchlist, Signals, News, Settings
 - GET /api/alpaca/positions, DELETE /api/alpaca/positions/:symbol
 - GET /api/alpaca/orders, POST /api/alpaca/orders, DELETE /api/alpaca/orders/:id
 - POST /api/alpaca/orders/preflight (safety check before placing order)
+- GET /api/autotrade/status (running state, last run time)
+- GET /api/autotrade/log (activity log entries)
+- POST /api/autotrade/run (trigger immediate scan)
 
 ## Environment Variables
 - `ALPACA_API_KEY` - Alpaca trading API key

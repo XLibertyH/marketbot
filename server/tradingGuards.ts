@@ -30,7 +30,6 @@ export async function validateOrder(params: {
   side: "buy" | "sell";
   type: string;
   limit_price?: number;
-  pin?: string;
 }): Promise<SafetyCheckResult> {
   const settings = await storage.getSettings();
   const warnings: string[] = [];
