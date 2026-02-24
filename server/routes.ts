@@ -2,8 +2,10 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { getMockQuote, getMockHistoricalData, getMockNews, getMockSignal } from "./mockData";
+import { getFinnhubQuote, getFinnhubCandles, getFinnhubNews } from "./finnhub";
 import { analyzeStock } from "./aiAnalysis";
 import { insertWatchlistSchema, insertBotSettingsSchema } from "@shared/schema";
+import type { StockQuote, HistoricalDataPoint } from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -45,23 +47,89 @@ export async function registerRoutes(
 
   app.get("/api/quotes", async (_req, res) => {
     const watchlist = await storage.getWatchlist();
+    const settings = await storage.getSettings();
+
+    if (!settings.simulationMode) {
+      try {
+        const quotes: StockQuote[] = [];
+        for (const item of watchlist) {
+          try {
+            const q = await getFinnhubQuote(item.symbol);
+            quotes.push(q);
+          } catch {
+            quotes.push(getMockQuote(item.symbol));
+          }
+        }
+        return res.json(quotes);
+      } catch {
+        // fall through to mock
+      }
+    }
+
     const quotes = watchlist.map(item => getMockQuote(item.symbol));
     res.json(quotes);
   });
 
   app.get("/api/quote/:symbol", async (req, res) => {
-    const quote = getMockQuote(req.params.symbol.toUpperCase());
-    res.json(quote);
+    const symbol = req.params.symbol.toUpperCase();
+    const settings = await storage.getSettings();
+
+    if (!settings.simulationMode) {
+      try {
+        const quote = await getFinnhubQuote(symbol);
+        return res.json(quote);
+      } catch {
+        // fall through to mock
+      }
+    }
+
+    res.json(getMockQuote(symbol));
   });
 
   app.get("/api/history/:symbol", async (req, res) => {
     const days = parseInt(req.query.days as string) || 90;
-    const data = getMockHistoricalData(req.params.symbol.toUpperCase(), days);
-    res.json(data);
+    const symbol = req.params.symbol.toUpperCase();
+    const settings = await storage.getSettings();
+
+    if (!settings.simulationMode) {
+      try {
+        const data = await getFinnhubCandles(symbol, days);
+        return res.json(data);
+      } catch {
+        // fall through to mock
+      }
+    }
+
+    res.json(getMockHistoricalData(symbol, days));
   });
 
   app.get("/api/news", async (req, res) => {
     const symbol = req.query.symbol as string;
+    const settings = await storage.getSettings();
+
+    if (!settings.simulationMode) {
+      try {
+        if (symbol) {
+          const liveNews = await getFinnhubNews(symbol.toUpperCase());
+          for (const n of liveNews) {
+            await storage.addNews(n);
+          }
+        } else {
+          const watchlist = await storage.getWatchlist();
+          for (const item of watchlist.slice(0, 3)) {
+            const liveNews = await getFinnhubNews(item.symbol, 3);
+            for (const n of liveNews) {
+              await storage.addNews(n);
+            }
+          }
+        }
+        const news = await storage.getNews(symbol?.toUpperCase());
+        return res.json(news);
+      } catch {
+        // fall through to mock
+      }
+    }
+
     if (symbol) {
       const mockNews = getMockNews(symbol.toUpperCase());
       for (const n of mockNews) {
@@ -94,23 +162,35 @@ export async function registerRoutes(
     if (!symbol) return res.status(400).json({ error: "Symbol required" });
 
     const upperSymbol = symbol.toUpperCase();
-    const quote = getMockQuote(upperSymbol);
-    const history = getMockHistoricalData(upperSymbol, 30);
     const settings = await storage.getSettings();
+
+    let quote: StockQuote;
+    let history: HistoricalDataPoint[];
+    let headlines: string[];
+
+    try {
+      if (!settings.simulationMode) {
+        quote = await getFinnhubQuote(upperSymbol);
+        history = await getFinnhubCandles(upperSymbol, 30);
+        const liveNews = await getFinnhubNews(upperSymbol, 3);
+        headlines = liveNews.map(n => n.headline);
+      } else {
+        quote = getMockQuote(upperSymbol);
+        history = getMockHistoricalData(upperSymbol, 30);
+        headlines = getMockNews(upperSymbol, 3).map(n => n.headline);
+      }
+    } catch {
+      quote = getMockQuote(upperSymbol);
+      history = getMockHistoricalData(upperSymbol, 30);
+      headlines = getMockNews(upperSymbol, 3).map(n => n.headline);
+    }
 
     let signalData: { signal: string; confidence: number; reason: string; price: number };
 
-    if (settings.simulationMode) {
-      const newsItems = getMockNews(upperSymbol, 3);
-      const headlines = newsItems.map(n => n.headline);
-
-      try {
-        const aiResult = await analyzeStock(upperSymbol, quote, history, headlines);
-        signalData = { ...aiResult, price: quote.price };
-      } catch {
-        signalData = { ...getMockSignal(upperSymbol, quote.price), price: quote.price };
-      }
-    } else {
+    try {
+      const aiResult = await analyzeStock(upperSymbol, quote, history, headlines);
+      signalData = { ...aiResult, price: quote.price };
+    } catch {
       signalData = { ...getMockSignal(upperSymbol, quote.price), price: quote.price };
     }
 
@@ -127,23 +207,35 @@ export async function registerRoutes(
 
   app.post("/api/signals/generate-all", async (_req, res) => {
     const watchlist = await storage.getWatchlist();
+    const settings = await storage.getSettings();
     const signals = [];
 
     for (const item of watchlist) {
-      const quote = getMockQuote(item.symbol);
-      const history = getMockHistoricalData(item.symbol, 30);
-      const settings = await storage.getSettings();
+      let quote: StockQuote;
+      let history: HistoricalDataPoint[];
+      let headlines: string[];
+
+      try {
+        if (!settings.simulationMode) {
+          quote = await getFinnhubQuote(item.symbol);
+          history = await getFinnhubCandles(item.symbol, 30);
+          const liveNews = await getFinnhubNews(item.symbol, 3);
+          headlines = liveNews.map(n => n.headline);
+        } else {
+          quote = getMockQuote(item.symbol);
+          history = getMockHistoricalData(item.symbol, 30);
+          headlines = getMockNews(item.symbol, 3).map(n => n.headline);
+        }
+      } catch {
+        quote = getMockQuote(item.symbol);
+        history = getMockHistoricalData(item.symbol, 30);
+        headlines = getMockNews(item.symbol, 3).map(n => n.headline);
+      }
 
       let signalData: { signal: string; confidence: number; reason: string; price: number };
       try {
-        if (settings.simulationMode) {
-          const newsItems = getMockNews(item.symbol, 3);
-          const headlines = newsItems.map(n => n.headline);
-          const aiResult = await analyzeStock(item.symbol, quote, history, headlines);
-          signalData = { ...aiResult, price: quote.price };
-        } else {
-          signalData = { ...getMockSignal(item.symbol, quote.price), price: quote.price };
-        }
+        const aiResult = await analyzeStock(item.symbol, quote, history, headlines);
+        signalData = { ...aiResult, price: quote.price };
       } catch {
         signalData = { ...getMockSignal(item.symbol, quote.price), price: quote.price };
       }
@@ -163,7 +255,22 @@ export async function registerRoutes(
 
   app.get("/api/portfolio/summary", async (_req, res) => {
     const watchlist = await storage.getWatchlist();
-    const quotes = watchlist.map(item => getMockQuote(item.symbol));
+    const settings = await storage.getSettings();
+
+    let quotes: StockQuote[];
+    if (!settings.simulationMode) {
+      quotes = [];
+      for (const item of watchlist) {
+        try {
+          quotes.push(await getFinnhubQuote(item.symbol));
+        } catch {
+          quotes.push(getMockQuote(item.symbol));
+        }
+      }
+    } else {
+      quotes = watchlist.map(item => getMockQuote(item.symbol));
+    }
+
     const signals = await storage.getSignals();
 
     const totalValue = quotes.reduce((sum, q) => sum + q.price * 10, 0);
