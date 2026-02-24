@@ -285,17 +285,30 @@ export async function registerRoutes(
     }
 
     const signals = await storage.getSignals();
-
-    const totalValue = quotes.reduce((sum, q) => sum + q.price * 10, 0);
-    const totalChange = quotes.reduce((sum, q) => sum + q.change * 10, 0);
     const buySignals = signals.filter(s => s.signal === "BUY").length;
     const sellSignals = signals.filter(s => s.signal === "SELL").length;
     const holdSignals = signals.filter(s => s.signal === "HOLD").length;
 
+    let totalValue = 0;
+    let totalChange = 0;
+    let totalChangePercent = 0;
+
+    try {
+      const account = await getAccount();
+      totalValue = parseFloat(account.equity);
+      const lastEquity = parseFloat(account.last_equity);
+      totalChange = +(totalValue - lastEquity).toFixed(2);
+      totalChangePercent = lastEquity > 0 ? +((totalChange / lastEquity) * 100).toFixed(2) : 0;
+    } catch {
+      totalValue = quotes.reduce((sum, q) => sum + q.price * 10, 0);
+      totalChange = quotes.reduce((sum, q) => sum + q.change * 10, 0);
+      totalChangePercent = +((totalChange / (totalValue - totalChange || 1)) * 100).toFixed(2);
+    }
+
     res.json({
       totalValue: +totalValue.toFixed(2),
-      totalChange: +totalChange.toFixed(2),
-      totalChangePercent: +((totalChange / (totalValue - totalChange)) * 100).toFixed(2),
+      totalChange,
+      totalChangePercent,
       stockCount: watchlist.length,
       buySignals,
       sellSignals,
