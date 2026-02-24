@@ -85,7 +85,7 @@ export class MemStorage implements IStorage {
 
   async addNews(item: InsertNewsItem): Promise<NewsItem> {
     const id = this.nextId++;
-    const newsItem: NewsItem = { id, ...item, publishedAt: new Date() };
+    const newsItem: NewsItem = { id, ...item, url: item.url ?? null, publishedAt: new Date() };
     this.news.set(id, newsItem);
     return newsItem;
   }

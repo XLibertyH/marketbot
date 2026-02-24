@@ -98,29 +98,27 @@ export async function registerRoutes(
     const history = getMockHistoricalData(upperSymbol, 30);
     const settings = await storage.getSettings();
 
-    let signalData;
+    let signalData: { signal: string; confidence: number; reason: string; price: number };
 
     if (settings.simulationMode) {
       const newsItems = getMockNews(upperSymbol, 3);
       const headlines = newsItems.map(n => n.headline);
 
       try {
-        signalData = await analyzeStock(upperSymbol, quote, history, headlines);
-        signalData.price = quote.price;
+        const aiResult = await analyzeStock(upperSymbol, quote, history, headlines);
+        signalData = { ...aiResult, price: quote.price };
       } catch {
-        const mock = getMockSignal(upperSymbol, quote.price);
-        signalData = mock;
+        signalData = { ...getMockSignal(upperSymbol, quote.price), price: quote.price };
       }
     } else {
-      const mock = getMockSignal(upperSymbol, quote.price);
-      signalData = mock;
+      signalData = { ...getMockSignal(upperSymbol, quote.price), price: quote.price };
     }
 
     const signal = await storage.addSignal({
       symbol: upperSymbol,
       signal: signalData.signal,
       confidence: signalData.confidence,
-      price: signalData.price || quote.price,
+      price: signalData.price,
       reason: signalData.reason,
     });
 
@@ -136,25 +134,25 @@ export async function registerRoutes(
       const history = getMockHistoricalData(item.symbol, 30);
       const settings = await storage.getSettings();
 
-      let signalData;
+      let signalData: { signal: string; confidence: number; reason: string; price: number };
       try {
         if (settings.simulationMode) {
           const newsItems = getMockNews(item.symbol, 3);
           const headlines = newsItems.map(n => n.headline);
-          signalData = await analyzeStock(item.symbol, quote, history, headlines);
-          signalData.price = quote.price;
+          const aiResult = await analyzeStock(item.symbol, quote, history, headlines);
+          signalData = { ...aiResult, price: quote.price };
         } else {
-          signalData = getMockSignal(item.symbol, quote.price);
+          signalData = { ...getMockSignal(item.symbol, quote.price), price: quote.price };
         }
       } catch {
-        signalData = getMockSignal(item.symbol, quote.price);
+        signalData = { ...getMockSignal(item.symbol, quote.price), price: quote.price };
       }
 
       const signal = await storage.addSignal({
         symbol: item.symbol,
         signal: signalData.signal,
         confidence: signalData.confidence,
-        price: signalData.price || quote.price,
+        price: signalData.price,
         reason: signalData.reason,
       });
       signals.push(signal);
