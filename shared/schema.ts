@@ -1,18 +1,77 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, integer, real, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+export const watchlistItems = pgTable("watchlist_items", {
+  id: serial("id").primaryKey(),
+  symbol: text("symbol").notNull(),
+  name: text("name").notNull(),
+  addedAt: timestamp("added_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const tradingSignals = pgTable("trading_signals", {
+  id: serial("id").primaryKey(),
+  symbol: text("symbol").notNull(),
+  signal: text("signal").notNull(),
+  confidence: real("confidence").notNull(),
+  price: real("price").notNull(),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+export const newsItems = pgTable("news_items", {
+  id: serial("id").primaryKey(),
+  symbol: text("symbol").notNull(),
+  headline: text("headline").notNull(),
+  summary: text("summary").notNull(),
+  source: text("source").notNull(),
+  sentiment: real("sentiment").notNull(),
+  url: text("url"),
+  publishedAt: timestamp("published_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const botSettings = pgTable("bot_settings", {
+  id: serial("id").primaryKey(),
+  simulationMode: boolean("simulation_mode").default(true).notNull(),
+  riskLevel: text("risk_level").default("medium").notNull(),
+  maxPositionSize: real("max_position_size").default(1000).notNull(),
+  stopLossPercent: real("stop_loss_percent").default(5).notNull(),
+  takeProfitPercent: real("take_profit_percent").default(10).notNull(),
+  autoTrade: boolean("auto_trade").default(false).notNull(),
+});
+
+export const insertWatchlistSchema = createInsertSchema(watchlistItems).omit({ id: true, addedAt: true });
+export const insertSignalSchema = createInsertSchema(tradingSignals).omit({ id: true, createdAt: true });
+export const insertNewsSchema = createInsertSchema(newsItems).omit({ id: true, publishedAt: true });
+export const insertBotSettingsSchema = createInsertSchema(botSettings).omit({ id: true });
+
+export type WatchlistItem = typeof watchlistItems.$inferSelect;
+export type InsertWatchlistItem = z.infer<typeof insertWatchlistSchema>;
+export type TradingSignal = typeof tradingSignals.$inferSelect;
+export type InsertTradingSignal = z.infer<typeof insertSignalSchema>;
+export type NewsItem = typeof newsItems.$inferSelect;
+export type InsertNewsItem = z.infer<typeof insertNewsSchema>;
+export type BotSettings = typeof botSettings.$inferSelect;
+export type InsertBotSettings = z.infer<typeof insertBotSettingsSchema>;
+
+export interface StockQuote {
+  symbol: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  high: number;
+  low: number;
+  open: number;
+  previousClose: number;
+  volume: number;
+}
+
+export interface HistoricalDataPoint {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
