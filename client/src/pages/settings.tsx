@@ -11,7 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Shield, Gauge, Zap } from "lucide-react";
+import { Settings as SettingsIcon, Shield, Gauge, Zap, CheckCircle, XCircle } from "lucide-react";
 import type { BotSettings } from "@shared/schema";
 
 export default function Settings() {
@@ -19,6 +19,10 @@ export default function Settings() {
 
   const { data: settings, isLoading } = useQuery<BotSettings>({
     queryKey: ["/api/settings"],
+  });
+
+  const { data: alpacaStatus } = useQuery<{ connected: boolean }>({
+    queryKey: ["/api/alpaca/status"],
   });
 
   const updateSettings = useMutation({
@@ -179,15 +183,17 @@ export default function Settings() {
               <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white">Connected</Badge>
             </div>
             <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-              <span className="font-medium">Alpaca (Trading)</span>
-              <Badge variant="outline" className="text-amber-600 border-amber-500/30">
-                {settings.simulationMode ? "Mock Mode" : "Not Connected"}
-              </Badge>
+              <span className="font-medium">Alpaca (Paper Trading)</span>
+              {alpacaStatus?.connected ? (
+                <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white">Connected</Badge>
+              ) : (
+                <Badge variant="outline" className="text-red-500 border-red-500/30">Not Connected</Badge>
+              )}
             </div>
             <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-              <span className="font-medium">Finnhub (News)</span>
-              <Badge variant="outline" className="text-amber-600 border-amber-500/30">
-                {settings.simulationMode ? "Mock Mode" : "Not Connected"}
+              <span className="font-medium">Finnhub (Market Data)</span>
+              <Badge variant="outline" className={settings.simulationMode ? "text-amber-600 border-amber-500/30" : "bg-emerald-500 hover:bg-emerald-600 text-white border-0"}>
+                {settings.simulationMode ? "Mock Mode" : "Connected"}
               </Badge>
             </div>
           </div>

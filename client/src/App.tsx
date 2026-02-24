@@ -7,14 +7,16 @@ import Dashboard from "@/pages/dashboard";
 import Watchlist from "@/pages/watchlist";
 import Signals from "@/pages/signals";
 import News from "@/pages/news";
+import Trading from "@/pages/trading";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 import {
-  LayoutDashboard, List, Zap, Newspaper, Settings as SettingsIcon, Bot,
+  LayoutDashboard, List, Zap, Newspaper, Settings as SettingsIcon, Bot, LineChart,
 } from "lucide-react";
 
 const navItems = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
+  { path: "/trading", label: "Trading", icon: LineChart },
   { path: "/watchlist", label: "Watchlist", icon: List },
   { path: "/signals", label: "Signals", icon: Zap },
   { path: "/news", label: "News", icon: Newspaper },
@@ -85,6 +87,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
+      <Route path="/trading" component={Trading} />
       <Route path="/watchlist" component={Watchlist} />
       <Route path="/signals" component={Signals} />
       <Route path="/news" component={News} />

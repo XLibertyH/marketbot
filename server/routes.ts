@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { getMockQuote, getMockHistoricalData, getMockNews, getMockSignal } from "./mockData";
 import { getFinnhubQuote, getFinnhubCandles, getFinnhubNews } from "./finnhub";
+import { getAccount, getPositions, getOrders, placeOrder, cancelOrder, cancelAllOrders, closePosition, isAlpacaConnected } from "./alpaca";
 import { analyzeStock } from "./aiAnalysis";
 import { insertWatchlistSchema, insertBotSettingsSchema } from "@shared/schema";
 import type { StockQuote, HistoricalDataPoint } from "@shared/schema";
@@ -289,6 +290,80 @@ export async function registerRoutes(
       holdSignals,
       quotes,
     });
+  });
+
+  app.get("/api/alpaca/account", async (_req, res) => {
+    try {
+      const account = await getAccount();
+      res.json(account);
+    } catch (error: any) {
+      res.status(503).json({ error: error.message || "Alpaca not connected" });
+    }
+  });
+
+  app.get("/api/alpaca/positions", async (_req, res) => {
+    try {
+      const positions = await getPositions();
+      res.json(positions);
+    } catch (error: any) {
+      res.status(503).json({ error: error.message || "Alpaca not connected" });
+    }
+  });
+
+  app.get("/api/alpaca/orders", async (req, res) => {
+    try {
+      const status = (req.query.status as string) || "all";
+      const limit = parseInt(req.query.limit as string) || 50;
+      const orders = await getOrders(status, limit);
+      res.json(orders);
+    } catch (error: any) {
+      res.status(503).json({ error: error.message || "Alpaca not connected" });
+    }
+  });
+
+  app.post("/api/alpaca/orders", async (req, res) => {
+    try {
+      const { symbol, qty, side, type, time_in_force, limit_price, stop_price } = req.body;
+      if (!symbol || !qty || !side || !type || !time_in_force) {
+        return res.status(400).json({ error: "Missing required fields: symbol, qty, side, type, time_in_force" });
+      }
+      const order = await placeOrder({ symbol, qty: Number(qty), side, type, time_in_force, limit_price: limit_price ? Number(limit_price) : undefined, stop_price: stop_price ? Number(stop_price) : undefined });
+      res.json(order);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || "Failed to place order" });
+    }
+  });
+
+  app.delete("/api/alpaca/orders/:id", async (req, res) => {
+    try {
+      await cancelOrder(req.params.id);
+      res.json({ ok: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || "Failed to cancel order" });
+    }
+  });
+
+  app.delete("/api/alpaca/orders", async (_req, res) => {
+    try {
+      await cancelAllOrders();
+      res.json({ ok: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || "Failed to cancel orders" });
+    }
+  });
+
+  app.delete("/api/alpaca/positions/:symbol", async (req, res) => {
+    try {
+      const order = await closePosition(req.params.symbol.toUpperCase());
+      res.json(order);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || "Failed to close position" });
+    }
+  });
+
+  app.get("/api/alpaca/status", async (_req, res) => {
+    const connected = await isAlpacaConnected();
+    res.json({ connected });
   });
 
   return httpServer;
