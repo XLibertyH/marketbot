@@ -209,7 +209,7 @@ export default function Settings() {
             <Slider
               value={[settings.maxPositionSize]}
               min={100}
-              max={10000}
+              max={100000}
               step={100}
               className="mt-3"
               onValueChange={([value]) => updateSettings.mutate({ maxPositionSize: value })}
@@ -217,7 +217,7 @@ export default function Settings() {
             />
             <div className="flex justify-between text-xs text-muted-foreground mt-1">
               <span>$100</span>
-              <span>$10,000</span>
+              <span>$100,000</span>
             </div>
           </div>
 
@@ -235,6 +235,10 @@ export default function Settings() {
               onValueChange={([value]) => updateSettings.mutate({ stopLossPercent: value })}
               data-testid="slider-stop-loss"
             />
+            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+              <span>1%</span>
+              <span>20%</span>
+            </div>
           </div>
 
           <div>
@@ -245,12 +249,16 @@ export default function Settings() {
             <Slider
               value={[settings.takeProfitPercent]}
               min={2}
-              max={50}
+              max={100}
               step={1}
               className="mt-3"
               onValueChange={([value]) => updateSettings.mutate({ takeProfitPercent: value })}
               data-testid="slider-take-profit"
             />
+            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+              <span>2%</span>
+              <span>100%</span>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -280,7 +288,7 @@ export default function Settings() {
             <Slider
               value={[settings.maxOrderValue]}
               min={500}
-              max={50000}
+              max={100000}
               step={500}
               className="mt-3"
               onValueChange={([value]) => updateSettings.mutate({ maxOrderValue: value })}
@@ -288,7 +296,7 @@ export default function Settings() {
             />
             <div className="flex justify-between text-xs text-muted-foreground mt-1">
               <span>$500</span>
-              <span>$50,000</span>
+              <span>$100,000</span>
             </div>
           </div>
 
@@ -303,7 +311,7 @@ export default function Settings() {
             <Slider
               value={[settings.maxDailyLoss]}
               min={100}
-              max={10000}
+              max={100000}
               step={100}
               className="mt-3"
               onValueChange={([value]) => updateSettings.mutate({ maxDailyLoss: value })}
@@ -311,7 +319,7 @@ export default function Settings() {
             />
             <div className="flex justify-between text-xs text-muted-foreground mt-1">
               <span>$100</span>
-              <span>$10,000</span>
+              <span>$100,000</span>
             </div>
           </div>
 
@@ -326,7 +334,7 @@ export default function Settings() {
             <Slider
               value={[settings.maxDailyOrders]}
               min={1}
-              max={100}
+              max={500}
               step={1}
               className="mt-3"
               onValueChange={([value]) => updateSettings.mutate({ maxDailyOrders: value })}
@@ -334,7 +342,7 @@ export default function Settings() {
             />
             <div className="flex justify-between text-xs text-muted-foreground mt-1">
               <span>1</span>
-              <span>100</span>
+              <span>500</span>
             </div>
           </div>
 
