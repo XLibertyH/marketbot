@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { getMockQuote, getMockHistoricalData, getMockNews, getMockSignal } from "./mockData";
-import { getFinnhubQuote, getFinnhubCandles, getFinnhubNews } from "./finnhub";
+import { getFinnhubQuote, getFinnhubCandles, getFinnhubNews, getFinnhubMarketNews } from "./finnhub";
 import { getAccount, getPositions, getOrders, placeOrder, cancelOrder, cancelAllOrders, closePosition, isAlpacaConnected, isLiveTrading } from "./alpaca";
 import { validateOrder, recordOrderPlaced, preflightCheck } from "./tradingGuards";
 import { analyzeStock } from "./aiAnalysis";
@@ -122,22 +122,49 @@ export async function registerRoutes(
 
     if (!settings.simulationMode) {
       try {
-        if (symbol) {
+        if (symbol === "MARKET") {
+          const marketNews = await getFinnhubMarketNews(20);
+          for (const n of marketNews) {
+            await storage.addNews({
+              symbol: "MARKET",
+              headline: n.headline,
+              summary: n.summary,
+              source: n.source,
+              sentiment: 0,
+              url: n.url,
+            });
+          }
+          const news = await storage.getNews("MARKET");
+          return res.json(news);
+        } else if (symbol) {
           const liveNews = await getFinnhubNews(symbol.toUpperCase());
           for (const n of liveNews) {
             await storage.addNews(n);
           }
+          const news = await storage.getNews(symbol.toUpperCase());
+          return res.json(news);
         } else {
+          const marketNews = await getFinnhubMarketNews(10);
+          for (const n of marketNews) {
+            await storage.addNews({
+              symbol: "MARKET",
+              headline: n.headline,
+              summary: n.summary,
+              source: n.source,
+              sentiment: 0,
+              url: n.url,
+            });
+          }
           const watchlist = await storage.getWatchlist();
-          for (const item of watchlist.slice(0, 3)) {
-            const liveNews = await getFinnhubNews(item.symbol, 3);
+          for (const item of watchlist.slice(0, 5)) {
+            const liveNews = await getFinnhubNews(item.symbol, 5);
             for (const n of liveNews) {
               await storage.addNews(n);
             }
           }
+          const news = await storage.getNews();
+          return res.json(news);
         }
-        const news = await storage.getNews(symbol?.toUpperCase());
-        return res.json(news);
       } catch {
         // fall through to mock
       }
