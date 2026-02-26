@@ -6,6 +6,64 @@ const openai = new OpenAI({
   baseURL: process.env.OPENAI_BASE_URL || process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
+const MODEL = process.env.OPENAI_MODEL || process.env.AI_INTEGRATIONS_OPENAI_MODEL || "gpt-4o-mini";
+const MAX_RETRIES = 2;
+
+async function callAI(
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens: number = 400
+): Promise<string> {
+  let lastError: any;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await openai.chat.completions.create({
+        model: MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        max_tokens: maxTokens,
+        temperature: 0.3,
+      });
+
+      const content = response.choices[0]?.message?.content || "";
+      if (content.trim().length > 0) {
+        return content;
+      }
+      lastError = new Error("Empty response from AI");
+    } catch (error: any) {
+      lastError = error;
+      console.error(`AI call attempt ${attempt + 1} failed:`, error.message || error);
+      if (attempt < MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+function extractJSON(content: string, type: "object" | "array"): any {
+  let cleaned = content.trim();
+
+  const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    cleaned = codeBlockMatch[1].trim();
+  }
+
+  if (type === "object") {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+  } else {
+    const match = cleaned.match(/\[[\s\S]*\]/);
+    if (match) return JSON.parse(match[0]);
+  }
+
+  return JSON.parse(cleaned);
+}
+
 export async function analyzeStock(
   symbol: string,
   quote: StockQuote,
@@ -13,46 +71,42 @@ export async function analyzeStock(
   newsHeadlines: string[]
 ): Promise<{ signal: string; confidence: number; reason: string }> {
   const recentHistory = history.slice(-10);
-  const prompt = `You are a stock trading analyst AI. Analyze the following data for ${symbol} and provide a trading signal.
 
-Current Quote:
-- Price: $${quote.price}
-- Change: ${quote.change} (${quote.changePercent}%)
-- High: $${quote.high}, Low: $${quote.low}
-- Volume: ${quote.volume.toLocaleString()}
+  const systemPrompt = `You are a stock trading analyst. You MUST respond with ONLY a JSON object, no other text. The JSON must have exactly these fields:
+- "signal": one of "BUY", "SELL", or "HOLD"
+- "confidence": a number between 0.0 and 1.0
+- "reason": a brief 1-2 sentence explanation
 
-Recent Price History (last 10 trading days):
+Example response:
+{"signal": "BUY", "confidence": 0.78, "reason": "Strong upward momentum with positive earnings surprise."}`;
+
+  const userPrompt = `Analyze ${symbol}:
+
+Price: $${quote.price} | Change: ${quote.change} (${quote.changePercent}%) | High: $${quote.high} | Low: $${quote.low} | Volume: ${quote.volume.toLocaleString()}
+
+Last 10 days:
 ${recentHistory.map(d => `${d.date}: O:$${d.open} H:$${d.high} L:$${d.low} C:$${d.close} V:${d.volume.toLocaleString()}`).join("\n")}
 
-Recent News Headlines:
-${newsHeadlines.length > 0 ? newsHeadlines.map(h => `- ${h}`).join("\n") : "- No recent news available"}
+News:
+${newsHeadlines.length > 0 ? newsHeadlines.slice(0, 5).map(h => `- ${h}`).join("\n") : "- No recent news"}
 
-Respond with ONLY valid JSON in this exact format:
-{
-  "signal": "BUY" or "SELL" or "HOLD",
-  "confidence": number between 0.0 and 1.0,
-  "reason": "Brief 1-2 sentence explanation of your analysis"
-}`;
+Respond with JSON only.`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-5-nano",
-      messages: [{ role: "user", content: prompt }],
-      max_completion_tokens: 200,
-    });
+    const content = await callAI(systemPrompt, userPrompt, 300);
+    const parsed = extractJSON(content, "object");
 
-    const content = response.choices[0]?.message?.content || "";
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return {
-        signal: parsed.signal || "HOLD",
-        confidence: Math.min(1, Math.max(0, parsed.confidence || 0.5)),
-        reason: parsed.reason || "Analysis complete.",
-      };
-    }
-  } catch (error) {
-    console.error("AI analysis error:", error);
+    const signal = ["BUY", "SELL", "HOLD"].includes(parsed.signal?.toUpperCase())
+      ? parsed.signal.toUpperCase()
+      : "HOLD";
+
+    return {
+      signal,
+      confidence: Math.min(1, Math.max(0, Number(parsed.confidence) || 0.5)),
+      reason: parsed.reason || "Analysis complete.",
+    };
+  } catch (error: any) {
+    console.error(`AI analysis failed for ${symbol}:`, error.message || error);
   }
 
   return {
@@ -66,47 +120,36 @@ export async function discoverStocks(
   currentSymbols: string[],
   recentNews: string[]
 ): Promise<{ symbol: string; name: string; reason: string }[]> {
-  const prompt = `You are a stock market research AI. Based on current market conditions and news, suggest 1-3 stocks worth watching that are NOT already in this list: ${currentSymbols.join(", ")}.
+  const systemPrompt = `You are a stock market research AI. You MUST respond with ONLY a JSON array, no other text. Each element must have:
+- "symbol": a US stock ticker (1-5 uppercase letters)
+- "name": the company name
+- "reason": brief reason why it's worth watching
 
-${recentNews.length > 0 ? `Recent market news:\n${recentNews.map(h => `- ${h}`).join("\n")}` : ""}
+Example response:
+[{"symbol": "NVDA", "name": "NVIDIA Corporation", "reason": "AI chip demand surging after new contracts."}]`;
 
-Consider stocks that:
-- Are trending due to recent news or earnings
-- Show strong momentum or breakout potential
-- Belong to sectors gaining attention
-- Are well-known, liquid US stocks (listed on NYSE or NASDAQ)
+  const userPrompt = `Suggest 1-3 US stocks worth watching that are NOT in this list: ${currentSymbols.join(", ")}.
 
-Respond with ONLY valid JSON in this exact format:
-[
-  { "symbol": "TICKER", "name": "Company Name", "reason": "Brief reason why this stock is worth watching" }
-]
+${recentNews.length > 0 ? `Recent news:\n${recentNews.slice(0, 5).map(h => `- ${h}`).join("\n")}` : "No specific news context."}
 
-Return between 1 and 3 stocks. Only suggest real, currently traded US stocks.`;
+Consider trending stocks with strong momentum or sector attention. Respond with JSON array only.`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-5-nano",
-      messages: [{ role: "user", content: prompt }],
-      max_completion_tokens: 300,
-    });
+    const content = await callAI(systemPrompt, userPrompt, 400);
+    const parsed = extractJSON(content, "array");
 
-    const content = response.choices[0]?.message?.content || "";
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (Array.isArray(parsed)) {
-        return parsed
-          .filter((s: any) => s.symbol && s.name && typeof s.symbol === "string")
-          .map((s: any) => ({
-            symbol: s.symbol.toUpperCase().replace(/[^A-Z]/g, ""),
-            name: s.name,
-            reason: s.reason || "AI-suggested stock",
-          }))
-          .slice(0, 3);
-      }
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((s: any) => s.symbol && s.name && typeof s.symbol === "string")
+        .map((s: any) => ({
+          symbol: s.symbol.toUpperCase().replace(/[^A-Z]/g, ""),
+          name: s.name,
+          reason: s.reason || "AI-suggested stock",
+        }))
+        .slice(0, 3);
     }
-  } catch (error) {
-    console.error("AI stock discovery error:", error);
+  } catch (error: any) {
+    console.error("AI stock discovery failed:", error.message || error);
   }
 
   return [];
