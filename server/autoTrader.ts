@@ -4,6 +4,7 @@ import { placeOrder, getAccount, getPositions, isLiveTrading } from "./alpaca";
 import { validateOrder, recordOrderPlaced } from "./tradingGuards";
 import { getMockQuote, getMockHistoricalData, getMockNews, getMockSignal } from "./mockData";
 import { getFinnhubQuote, getFinnhubCandles, getFinnhubNews } from "./finnhub";
+import { calculateHalfKelly, recordTradeOutcome, updateOutcomes } from "./kellyCriterion";
 import { log } from "./index";
 import type { StockQuote, HistoricalDataPoint } from "@shared/schema";
 
@@ -134,7 +135,27 @@ async function runAutoTradePass() {
           continue;
         }
 
-        const qty = Math.max(1, Math.floor(settings.autoTradePositionSize / quote.price));
+        let positionDollars = settings.autoTradePositionSize;
+        let sizingMethod = "fixed";
+
+        if (settings.riskLevel === "medium-controlled") {
+          try {
+            const kelly = await calculateHalfKelly(signalData.confidence, quote.price);
+            positionDollars = kelly.positionSize;
+            sizingMethod = "half-kelly";
+            addLog("signal", `Half-Kelly sizing: ${(kelly.halfKellyFraction * 100).toFixed(1)}% of $${kelly.equity.toFixed(0)} = $${positionDollars.toFixed(0)} (win rate: ${(kelly.winRate * 100).toFixed(0)}%, payoff: ${kelly.payoffRatio.toFixed(2)}x)`, item.symbol, {
+              kellyFraction: kelly.kellyFraction,
+              halfKellyFraction: kelly.halfKellyFraction,
+              positionSize: kelly.positionSize,
+              winRate: kelly.winRate,
+              payoffRatio: kelly.payoffRatio,
+            });
+          } catch (err: any) {
+            addLog("error", `Kelly calculation failed, using fixed size: ${err.message}`, item.symbol);
+          }
+        }
+
+        const qty = Math.max(1, Math.floor(positionDollars / quote.price));
         const estimatedValue = qty * quote.price;
 
         const safety = await validateOrder({
@@ -159,11 +180,21 @@ async function runAutoTradePass() {
           });
           recordOrderPlaced();
           existingPositions.push(item.symbol.toUpperCase());
-          addLog("trade", `BUY ${qty} shares at ~$${quote.price.toFixed(2)} (est. $${estimatedValue.toFixed(2)})`, item.symbol, {
+
+          recordTradeOutcome({
+            symbol: item.symbol,
+            signal: signalData.signal,
+            confidence: signalData.confidence,
+            entryPrice: quote.price,
+            timestamp: new Date().toISOString(),
+          });
+
+          addLog("trade", `BUY ${qty} shares at ~$${quote.price.toFixed(2)} (est. $${estimatedValue.toFixed(2)}, sizing: ${sizingMethod})`, item.symbol, {
             orderId: order.id,
             qty,
             side: "buy",
             estimatedValue,
+            sizingMethod,
           });
         } catch (err: any) {
           addLog("error", `Failed to place BUY order: ${err.message}`, item.symbol);
@@ -279,7 +310,10 @@ export async function startAutoTrader() {
   isRunning = true;
   const intervalMs = Math.max(1, settings.autoTradeInterval) * 60 * 1000;
 
-  addLog("start", `Auto-trader started — scanning every ${settings.autoTradeInterval} minutes, min confidence ${(settings.autoTradeMinConfidence * 100).toFixed(0)}%, position size $${settings.autoTradePositionSize}`);
+  const sizingLabel = settings.riskLevel === "medium-controlled"
+    ? "half-Kelly dynamic sizing"
+    : `fixed $${settings.autoTradePositionSize}`;
+  addLog("start", `Auto-trader started — scanning every ${settings.autoTradeInterval} minutes, min confidence ${(settings.autoTradeMinConfidence * 100).toFixed(0)}%, sizing: ${sizingLabel}`);
 
   runAutoTradePass().catch(err => addLog("error", `Auto-trade pass failed: ${err.message}`));
 

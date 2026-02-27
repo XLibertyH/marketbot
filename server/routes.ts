@@ -7,6 +7,7 @@ import { getAccount, getPositions, getOrders, placeOrder, cancelOrder, cancelAll
 import { validateOrder, recordOrderPlaced, preflightCheck } from "./tradingGuards";
 import { analyzeStock } from "./aiAnalysis";
 import { getAutoTradeLog, getAutoTradeStatus, restartAutoTrader, startAutoTrader } from "./autoTrader";
+import { getKellyStats } from "./kellyCriterion";
 import { startNewsMonitor, stopNewsMonitor, restartNewsMonitor, isNewsMonitorRunning } from "./newsMonitor";
 import { insertWatchlistSchema, insertBotSettingsSchema } from "@shared/schema";
 import type { StockQuote, HistoricalDataPoint } from "@shared/schema";
@@ -441,9 +442,11 @@ export async function registerRoutes(
     res.json({ connected, isLive: isLiveTrading() });
   });
 
-  app.get("/api/autotrade/status", (_req, res) => {
+  app.get("/api/autotrade/status", async (_req, res) => {
     const status = getAutoTradeStatus();
-    res.json({ ...status, newsMonitorRunning: isNewsMonitorRunning() });
+    const settings = await storage.getSettings();
+    const kellyStats = settings.riskLevel === "medium-controlled" ? getKellyStats() : null;
+    res.json({ ...status, newsMonitorRunning: isNewsMonitorRunning(), kellyStats });
   });
 
   app.get("/api/autotrade/log", (req, res) => {
