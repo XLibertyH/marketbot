@@ -19,12 +19,25 @@ export default function Dashboard() {
     totalValue: number;
     totalChange: number;
     totalChangePercent: number;
+    cash: number;
+    buyingPower: number;
+    longMarketValue: number;
+    positions: Array<{
+      symbol: string;
+      qty: number;
+      avgEntry: number;
+      currentPrice: number;
+      marketValue: number;
+      unrealizedPL: number;
+      unrealizedPLPercent: number;
+      side: string;
+    }>;
     stockCount: number;
     buySignals: number;
     sellSignals: number;
     holdSignals: number;
     quotes: StockQuote[];
-  }>({ queryKey: ["/api/portfolio/summary"] });
+  }>({ queryKey: ["/api/portfolio/summary"], refetchInterval: 30000 });
 
   const { data: signals } = useQuery<TradingSignal[]>({
     queryKey: ["/api/signals"],
@@ -111,40 +124,56 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card data-testid="card-stocks-tracked">
+        <Card data-testid="card-cash-balance">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Stocks Tracked</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Cash Balance</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {summaryLoading ? <Skeleton className="h-7 w-12" /> : (
+            {summaryLoading ? <Skeleton className="h-7 w-28" /> : (
               <>
-                <div className="text-2xl font-bold" data-testid="text-stock-count">{summary?.stockCount || 0}</div>
-                <p className="text-xs text-muted-foreground">In your watchlist</p>
+                <div className="text-2xl font-bold" data-testid="text-cash-balance">
+                  ${summary?.cash?.toLocaleString() || "0"}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Buying power: ${summary?.buyingPower?.toLocaleString() || "0"}
+                </p>
               </>
             )}
           </CardContent>
         </Card>
 
-        <Card data-testid="card-buy-signals">
+        <Card data-testid="card-positions-value">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Buy Signals</CardTitle>
-            <ArrowUpRight className="h-4 w-4 text-emerald-500" />
+            <CardTitle className="text-sm font-medium">Positions Value</CardTitle>
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-emerald-600" data-testid="text-buy-count">{summary?.buySignals || 0}</div>
-            <p className="text-xs text-muted-foreground">Active recommendations</p>
+            {summaryLoading ? <Skeleton className="h-7 w-28" /> : (
+              <>
+                <div className="text-2xl font-bold" data-testid="text-positions-value">
+                  ${summary?.longMarketValue?.toLocaleString() || "0"}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {summary?.positions?.length || 0} open position{(summary?.positions?.length || 0) !== 1 ? "s" : ""}
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
-        <Card data-testid="card-sell-signals">
+        <Card data-testid="card-signals-summary">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Sell Signals</CardTitle>
-            <ArrowDownRight className="h-4 w-4 text-red-500" />
+            <CardTitle className="text-sm font-medium">AI Signals</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-500" data-testid="text-sell-count">{summary?.sellSignals || 0}</div>
-            <p className="text-xs text-muted-foreground">Active recommendations</p>
+            <div className="flex items-center gap-3">
+              <span className="text-lg font-bold text-emerald-600" data-testid="text-buy-count">{summary?.buySignals || 0} <span className="text-xs font-normal">BUY</span></span>
+              <span className="text-lg font-bold text-red-500" data-testid="text-sell-count">{summary?.sellSignals || 0} <span className="text-xs font-normal">SELL</span></span>
+              <span className="text-lg font-bold text-amber-500">{summary?.holdSignals || 0} <span className="text-xs font-normal">HOLD</span></span>
+            </div>
+            <p className="text-xs text-muted-foreground">{summary?.stockCount || 0} stocks tracked</p>
           </CardContent>
         </Card>
       </div>
@@ -204,6 +233,48 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {summary?.positions && summary.positions.length > 0 && (
+        <Card data-testid="card-open-positions">
+          <CardHeader>
+            <CardTitle className="text-lg">Open Positions (Alpaca)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="pb-2 font-medium">Symbol</th>
+                    <th className="pb-2 font-medium text-right">Qty</th>
+                    <th className="pb-2 font-medium text-right">Avg Entry</th>
+                    <th className="pb-2 font-medium text-right">Current</th>
+                    <th className="pb-2 font-medium text-right">Market Value</th>
+                    <th className="pb-2 font-medium text-right">P&L</th>
+                    <th className="pb-2 font-medium text-right">P&L %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.positions.map((p) => (
+                    <tr key={p.symbol} className="border-b last:border-0" data-testid={`position-row-${p.symbol}`}>
+                      <td className="py-2 font-semibold">{p.symbol}</td>
+                      <td className="py-2 text-right">{p.qty}</td>
+                      <td className="py-2 text-right">${p.avgEntry.toFixed(2)}</td>
+                      <td className="py-2 text-right">${p.currentPrice.toFixed(2)}</td>
+                      <td className="py-2 text-right">${p.marketValue.toLocaleString()}</td>
+                      <td className={`py-2 text-right font-medium ${p.unrealizedPL >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                        {p.unrealizedPL >= 0 ? "+" : ""}${p.unrealizedPL.toFixed(2)}
+                      </td>
+                      <td className={`py-2 text-right font-medium ${p.unrealizedPLPercent >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                        {p.unrealizedPLPercent >= 0 ? "+" : ""}{p.unrealizedPLPercent.toFixed(2)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card data-testid="card-recent-signals">
         <CardHeader>

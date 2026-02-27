@@ -320,6 +320,10 @@ export async function registerRoutes(
     let totalValue = 0;
     let totalChange = 0;
     let totalChangePercent = 0;
+    let cash = 0;
+    let buyingPower = 0;
+    let longMarketValue = 0;
+    let positions: any[] = [];
 
     try {
       const account = await getAccount();
@@ -327,6 +331,23 @@ export async function registerRoutes(
       const lastEquity = parseFloat(account.last_equity);
       totalChange = +(totalValue - lastEquity).toFixed(2);
       totalChangePercent = lastEquity > 0 ? +((totalChange / lastEquity) * 100).toFixed(2) : 0;
+      cash = parseFloat(account.cash);
+      buyingPower = parseFloat(account.buying_power);
+      longMarketValue = parseFloat(account.long_market_value);
+
+      try {
+        const alpacaPositions = await getPositions();
+        positions = alpacaPositions.map(p => ({
+          symbol: p.symbol,
+          qty: parseInt(p.qty),
+          avgEntry: parseFloat(p.avg_entry_price),
+          currentPrice: parseFloat(p.current_price),
+          marketValue: parseFloat(p.market_value),
+          unrealizedPL: parseFloat(p.unrealized_pl),
+          unrealizedPLPercent: parseFloat(p.unrealized_plpc) * 100,
+          side: p.side,
+        }));
+      } catch {}
     } catch {
       totalValue = quotes.reduce((sum, q) => sum + q.price * 10, 0);
       totalChange = quotes.reduce((sum, q) => sum + q.change * 10, 0);
@@ -337,6 +358,10 @@ export async function registerRoutes(
       totalValue: +totalValue.toFixed(2),
       totalChange,
       totalChangePercent,
+      cash: +cash.toFixed(2),
+      buyingPower: +buyingPower.toFixed(2),
+      longMarketValue: +longMarketValue.toFixed(2),
+      positions,
       stockCount: watchlist.length,
       buySignals,
       sellSignals,
