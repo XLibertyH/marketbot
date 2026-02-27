@@ -47,6 +47,17 @@ const riskPresets: Record<string, Partial<BotSettings>> = {
     autoTradePositionSize: 1000,
     maxEquityExposure: 150,
   },
+  buffett: {
+    maxPositionSize: 10000,
+    stopLossPercent: 15,
+    takeProfitPercent: 50,
+    maxOrderValue: 10000,
+    maxDailyLoss: 1000,
+    maxDailyOrders: 5,
+    autoTradeMinConfidence: 0.88,
+    autoTradePositionSize: 5000,
+    maxEquityExposure: 95,
+  },
   high: {
     maxPositionSize: 25000,
     stopLossPercent: 10,
@@ -255,6 +266,7 @@ export default function Settings() {
                 <SelectItem value="low">Low - Conservative</SelectItem>
                 <SelectItem value="medium">Medium - Balanced</SelectItem>
                 <SelectItem value="medium-controlled">Medium & Controlled</SelectItem>
+                <SelectItem value="buffett">Warren Buffett Style</SelectItem>
                 <SelectItem value="high">High - Aggressive</SelectItem>
               </SelectContent>
             </Select>
