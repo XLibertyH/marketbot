@@ -36,6 +36,17 @@ const riskPresets: Record<string, Partial<BotSettings>> = {
     autoTradeMinConfidence: 0.75,
     autoTradePositionSize: 500,
   },
+  "medium-controlled": {
+    maxPositionSize: 10000,
+    stopLossPercent: 5,
+    takeProfitPercent: 10,
+    maxOrderValue: 10000,
+    maxDailyLoss: 2000,
+    maxDailyOrders: 15,
+    autoTradeMinConfidence: 0.78,
+    autoTradePositionSize: 1000,
+    maxEquityExposure: 150,
+  },
   high: {
     maxPositionSize: 25000,
     stopLossPercent: 10,
@@ -243,6 +254,7 @@ export default function Settings() {
               <SelectContent>
                 <SelectItem value="low">Low - Conservative</SelectItem>
                 <SelectItem value="medium">Medium - Balanced</SelectItem>
+                <SelectItem value="medium-controlled">Medium & Controlled</SelectItem>
                 <SelectItem value="high">High - Aggressive</SelectItem>
               </SelectContent>
             </Select>
@@ -390,6 +402,31 @@ export default function Settings() {
             <div className="flex justify-between text-xs text-muted-foreground mt-1">
               <span>1</span>
               <span>500</span>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <Label className="text-base">Max Equity Exposure</Label>
+              <span className="text-sm font-medium" data-testid="text-max-equity-exposure">
+                {settings.maxEquityExposure === 0 ? "Unlimited" : `${settings.maxEquityExposure}%`}
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Cap total position exposure as a percentage of account equity. 0 = no cap.
+            </p>
+            <Slider
+              value={[settings.maxEquityExposure]}
+              min={0}
+              max={300}
+              step={10}
+              className="mt-3"
+              onValueChange={([value]) => updateSettings.mutate({ maxEquityExposure: value })}
+              data-testid="slider-max-equity-exposure"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+              <span>Off</span>
+              <span>300%</span>
             </div>
           </div>
 

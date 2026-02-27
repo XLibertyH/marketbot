@@ -71,6 +71,23 @@ export async function validateOrder(params: {
       if (estimatedValue > equity * 0.25) {
         warnings.push(`This order is more than 25% of your total equity ($${equity.toFixed(2)})`);
       }
+
+      if (settings.maxEquityExposure > 0) {
+        try {
+          const positions = await getPositions();
+          const totalExposure = positions.reduce((sum, p) => sum + Math.abs(parseFloat(p.market_value)), 0);
+          const exposureAfter = totalExposure + estimatedValue;
+          const maxExposureValue = equity * (settings.maxEquityExposure / 100);
+          if (exposureAfter > maxExposureValue) {
+            return { allowed: false, reason: `Order would exceed equity exposure cap (${settings.maxEquityExposure}%). Current exposure: $${totalExposure.toFixed(0)}, after order: $${exposureAfter.toFixed(0)}, cap: $${maxExposureValue.toFixed(0)}`, warnings, isLive: live };
+          }
+          if (exposureAfter > maxExposureValue * 0.9) {
+            warnings.push(`Approaching equity exposure cap: $${exposureAfter.toFixed(0)} of $${maxExposureValue.toFixed(0)} (${settings.maxEquityExposure}%)`);
+          }
+        } catch {
+          warnings.push("Could not verify equity exposure");
+        }
+      }
     }
 
     const lastEquity = parseFloat(account.last_equity);

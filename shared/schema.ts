@@ -48,6 +48,7 @@ export const botSettings = pgTable("bot_settings", {
   maxDailyOrders: integer("max_daily_orders").default(20).notNull(),
   requireConfirmation: boolean("require_confirmation").default(true).notNull(),
   allowedSymbols: text("allowed_symbols").default("").notNull(),
+  maxEquityExposure: integer("max_equity_exposure").default(0).notNull(),
 });
 
 export const insertWatchlistSchema = createInsertSchema(watchlistItems).omit({ id: true, addedAt: true });

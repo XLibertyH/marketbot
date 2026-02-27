@@ -43,6 +43,7 @@ export class MemStorage implements IStorage {
       maxDailyOrders: 20,
       requireConfirmation: true,
       allowedSymbols: "",
+      maxEquityExposure: 0,
     };
 
     const defaultStocks = [
