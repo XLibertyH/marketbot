@@ -15,6 +15,39 @@ import { Shield, Gauge, Zap, AlertTriangle } from "lucide-react";
 import type { BotSettings } from "@shared/schema";
 import { useState } from "react";
 
+const riskPresets: Record<string, Partial<BotSettings>> = {
+  low: {
+    maxPositionSize: 1000,
+    stopLossPercent: 3,
+    takeProfitPercent: 5,
+    maxOrderValue: 2000,
+    maxDailyLoss: 500,
+    maxDailyOrders: 5,
+    autoTradeMinConfidence: 0.9,
+    autoTradePositionSize: 200,
+  },
+  medium: {
+    maxPositionSize: 5000,
+    stopLossPercent: 5,
+    takeProfitPercent: 10,
+    maxOrderValue: 5000,
+    maxDailyLoss: 1000,
+    maxDailyOrders: 20,
+    autoTradeMinConfidence: 0.75,
+    autoTradePositionSize: 500,
+  },
+  high: {
+    maxPositionSize: 25000,
+    stopLossPercent: 10,
+    takeProfitPercent: 25,
+    maxOrderValue: 25000,
+    maxDailyLoss: 5000,
+    maxDailyOrders: 50,
+    autoTradeMinConfidence: 0.6,
+    autoTradePositionSize: 2000,
+  },
+};
+
 export default function Settings() {
   const { toast } = useToast();
   const [symbolsInput, setSymbolsInput] = useState("");
@@ -186,9 +219,23 @@ export default function Settings() {
         <CardContent className="space-y-6">
           <div>
             <Label className="text-base">Risk Level</Label>
+            <p className="text-sm text-muted-foreground mt-1 mb-2">
+              Selecting a level applies predefined values to all settings below
+            </p>
             <Select
               value={settings.riskLevel}
-              onValueChange={(value) => updateSettings.mutate({ riskLevel: value })}
+              onValueChange={(value) => {
+                const preset = riskPresets[value];
+                if (preset) {
+                  updateSettings.mutate({ riskLevel: value, ...preset });
+                  toast({
+                    title: `Risk level set to ${value}`,
+                    description: "All trading parameters have been updated to match.",
+                  });
+                } else {
+                  updateSettings.mutate({ riskLevel: value });
+                }
+              }}
             >
               <SelectTrigger className="mt-2" data-testid="select-risk-level">
                 <SelectValue />
