@@ -145,7 +145,7 @@ export default function Dashboard() {
 
         <Card data-testid="card-positions-value">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Positions Value</CardTitle>
+            <CardTitle className="text-sm font-medium">Holdings Value</CardTitle>
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -154,9 +154,16 @@ export default function Dashboard() {
                 <div className="text-2xl font-bold" data-testid="text-positions-value">
                   ${summary?.longMarketValue?.toLocaleString() || "0"}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {summary?.positions?.length || 0} open position{(summary?.positions?.length || 0) !== 1 ? "s" : ""}
-                </p>
+                {summary?.positions && summary.positions.length > 0 ? (() => {
+                  const totalPL = summary.positions.reduce((s, p) => s + p.unrealizedPL, 0);
+                  return (
+                    <p className={`text-xs font-medium ${totalPL >= 0 ? "text-emerald-600" : "text-red-500"}`} data-testid="text-total-unrealized-pl">
+                      {totalPL >= 0 ? "+" : ""}${totalPL.toFixed(2)} unrealized · {summary.positions.length} position{summary.positions.length !== 1 ? "s" : ""}
+                    </p>
+                  );
+                })() : (
+                  <p className="text-xs text-muted-foreground">No open positions</p>
+                )}
               </>
             )}
           </CardContent>
@@ -270,6 +277,29 @@ export default function Dashboard() {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  {(() => {
+                    const totalMV = summary.positions.reduce((s, p) => s + p.marketValue, 0);
+                    const totalPL = summary.positions.reduce((s, p) => s + p.unrealizedPL, 0);
+                    const totalCost = summary.positions.reduce((s, p) => s + p.avgEntry * p.qty, 0);
+                    const totalPLPct = totalCost > 0 ? (totalPL / totalCost) * 100 : 0;
+                    return (
+                      <tr className="border-t-2 border-border font-semibold" data-testid="position-row-total">
+                        <td className="py-3">Total</td>
+                        <td className="py-3 text-right">{summary.positions.reduce((s, p) => s + p.qty, 0)}</td>
+                        <td className="py-3 text-right"></td>
+                        <td className="py-3 text-right"></td>
+                        <td className="py-3 text-right" data-testid="text-total-market-value">${totalMV.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td className={`py-3 text-right ${totalPL >= 0 ? "text-emerald-600" : "text-red-500"}`} data-testid="text-total-pl">
+                          {totalPL >= 0 ? "+" : ""}${totalPL.toFixed(2)}
+                        </td>
+                        <td className={`py-3 text-right ${totalPLPct >= 0 ? "text-emerald-600" : "text-red-500"}`} data-testid="text-total-pl-pct">
+                          {totalPLPct >= 0 ? "+" : ""}{totalPLPct.toFixed(2)}%
+                        </td>
+                      </tr>
+                    );
+                  })()}
+                </tfoot>
               </table>
             </div>
           </CardContent>
