@@ -5,16 +5,35 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart,
 } from "recharts";
 import {
   TrendingUp, TrendingDown, DollarSign, BarChart3, Activity, Zap,
   ArrowUpRight, ArrowDownRight, Minus, Bot, Play, Square, Search,
   ShoppingCart, AlertCircle, SkipForward, Newspaper,
 } from "lucide-react";
-import type { StockQuote, TradingSignal, HistoricalDataPoint, BotSettings } from "@shared/schema";
+import type { TradingSignal, BotSettings } from "@shared/schema";
+import { useState } from "react";
+
+interface PortfolioHistoryPoint {
+  date: string;
+  equity: number;
+  profitLoss: number;
+  profitLossPct: number;
+}
+
+interface PortfolioHistory {
+  baseValue: number;
+  timeframe: string;
+  points: PortfolioHistoryPoint[];
+}
 
 export default function Dashboard() {
+  const [chartPeriod, setChartPeriod] = useState("1M");
+
   const { data: summary, isLoading: summaryLoading } = useQuery<{
     totalValue: number;
     totalChange: number;
@@ -36,8 +55,7 @@ export default function Dashboard() {
     buySignals: number;
     sellSignals: number;
     holdSignals: number;
-    quotes: StockQuote[];
-  }>({ queryKey: ["/api/portfolio/summary"], refetchInterval: 30000 });
+  }>({ queryKey: ["/api/portfolio/summary"], refetchInterval: 5000 });
 
   const { data: signals } = useQuery<TradingSignal[]>({
     queryKey: ["/api/signals"],
@@ -49,18 +67,26 @@ export default function Dashboard() {
 
   const { data: autoTradeStatus } = useQuery<{ running: boolean; lastRun: string | null; logCount: number; newsMonitorRunning: boolean }>({
     queryKey: ["/api/autotrade/status"],
-    refetchInterval: 10000,
+    refetchInterval: 5000,
   });
 
   const { data: autoTradeLog } = useQuery<Array<{
     id: number; timestamp: string; type: string; symbol?: string; message: string; details?: Record<string, any>;
   }>>({
     queryKey: ["/api/autotrade/log"],
-    refetchInterval: 10000,
+    refetchInterval: 5000,
   });
 
-  const { data: historyAAPL } = useQuery<HistoricalDataPoint[]>({
-    queryKey: ["/api/history/AAPL"],
+  // Portfolio equity history from Alpaca
+  const { data: portfolioHistory } = useQuery<PortfolioHistory>({
+    queryKey: ["/api/portfolio/history", chartPeriod],
+    queryFn: async () => {
+      const timeframe = chartPeriod === "1D" ? "15Min" : "1D";
+      const res = await fetch(`/api/portfolio/history?period=${chartPeriod}&timeframe=${timeframe}`);
+      if (!res.ok) throw new Error("Failed to fetch portfolio history");
+      return res.json();
+    },
+    refetchInterval: 60000,
   });
 
   const generateAll = useMutation({
@@ -73,6 +99,11 @@ export default function Dashboard() {
 
   const recentSignals = signals?.slice(0, 5) || [];
 
+  // Top movers from positions (sorted by absolute P&L%)
+  const topMovers = [...(summary?.positions || [])]
+    .sort((a, b) => Math.abs(b.unrealizedPLPercent) - Math.abs(a.unrealizedPLPercent))
+    .slice(0, 10);
+
   return (
     <div className="space-y-6" data-testid="dashboard-page">
       <div className="flex items-center justify-between">
@@ -81,15 +112,10 @@ export default function Dashboard() {
             Trading Dashboard
           </h1>
           <p className="text-muted-foreground">
-            Monitor your portfolio and trading signals
+            Real-time portfolio from Alpaca
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {settings?.simulationMode && (
-            <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30" data-testid="badge-simulation">
-              Simulation Mode
-            </Badge>
-          )}
           <Button
             onClick={() => generateAll.mutate()}
             disabled={generateAll.isPending}
@@ -113,7 +139,7 @@ export default function Dashboard() {
             ) : (
               <>
                 <div className="text-2xl font-bold" data-testid="text-portfolio-value">
-                  ${summary?.totalValue?.toLocaleString() || "0"}
+                  ${summary?.totalValue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0"}
                 </div>
                 <p className={`text-xs flex items-center gap-1 ${(summary?.totalChange || 0) >= 0 ? "text-emerald-600" : "text-red-500"}`}>
                   {(summary?.totalChange || 0) >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
@@ -133,10 +159,10 @@ export default function Dashboard() {
             {summaryLoading ? <Skeleton className="h-7 w-28" /> : (
               <>
                 <div className="text-2xl font-bold" data-testid="text-cash-balance">
-                  ${summary?.cash?.toLocaleString() || "0"}
+                  ${summary?.cash?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0"}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Buying power: ${summary?.buyingPower?.toLocaleString() || "0"}
+                  Buying power: ${summary?.buyingPower?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0"}
                 </p>
               </>
             )}
@@ -152,7 +178,7 @@ export default function Dashboard() {
             {summaryLoading ? <Skeleton className="h-7 w-28" /> : (
               <>
                 <div className="text-2xl font-bold" data-testid="text-positions-value">
-                  ${summary?.longMarketValue?.toLocaleString() || "0"}
+                  ${summary?.longMarketValue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0"}
                 </div>
                 {summary?.positions && summary.positions.length > 0 ? (() => {
                   const totalPL = summary.positions.reduce((s, p) => s + p.unrealizedPL, 0);
@@ -185,62 +211,109 @@ export default function Dashboard() {
         </Card>
       </div>
 
+      {/* Portfolio Equity Chart + Top Movers */}
       <div className="grid gap-4 lg:grid-cols-7">
-        <Card className="lg:col-span-4" data-testid="card-price-chart">
-          <CardHeader>
-            <CardTitle className="text-lg">AAPL Price History</CardTitle>
+        <Card className="lg:col-span-4" data-testid="card-equity-chart">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-lg">Portfolio Equity</CardTitle>
+            <Select value={chartPeriod} onValueChange={setChartPeriod}>
+              <SelectTrigger className="w-[100px] h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1D">1 Day</SelectItem>
+                <SelectItem value="1W">1 Week</SelectItem>
+                <SelectItem value="1M">1 Month</SelectItem>
+                <SelectItem value="3M">3 Months</SelectItem>
+                <SelectItem value="1A">1 Year</SelectItem>
+              </SelectContent>
+            </Select>
           </CardHeader>
           <CardContent>
-            {historyAAPL ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <AreaChart data={historyAAPL}>
-                  <defs>
-                    <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(217, 91%, 48%)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(217, 91%, 48%)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(d) => d.slice(5)} />
-                  <YAxis tick={{ fontSize: 11 }} domain={["auto", "auto"]} />
-                  <Tooltip
-                    contentStyle={{ borderRadius: "8px", border: "1px solid hsl(210, 15%, 88%)" }}
-                    formatter={(value: number) => [`$${value.toFixed(2)}`, "Price"]}
-                  />
-                  <Area type="monotone" dataKey="close" stroke="hsl(217, 91%, 48%)" fill="url(#colorPrice)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
+            {portfolioHistory && portfolioHistory.points?.length > 0 ? (
+              <>
+                <ResponsiveContainer width="100%" height={280}>
+                  <AreaChart data={portfolioHistory.points}>
+                    <defs>
+                      <linearGradient id="colorEquity" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(142, 71%, 45%)" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="hsl(142, 71%, 45%)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fontSize: 11 }}
+                      tickFormatter={(d) => chartPeriod === "1D" ? d.split("T")[1]?.slice(0, 5) || d : d.slice(5)}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11 }}
+                      domain={["auto", "auto"]}
+                      tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+                    />
+                    <Tooltip
+                      contentStyle={{ borderRadius: "8px", border: "1px solid hsl(210, 15%, 88%)" }}
+                      formatter={(value: number) => [`$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, "Equity"]}
+                    />
+                    <Area type="monotone" dataKey="equity" stroke="hsl(142, 71%, 45%)" fill="url(#colorEquity)" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+                <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                  <span>Base: ${portfolioHistory.baseValue?.toLocaleString()}</span>
+                  {portfolioHistory.points.length > 0 && (() => {
+                    const last = portfolioHistory.points[portfolioHistory.points.length - 1];
+                    const pct = last.profitLossPct ? (last.profitLossPct * 100).toFixed(2) : "0.00";
+                    const pl = last.profitLoss || 0;
+                    return (
+                      <span className={pl >= 0 ? "text-emerald-600 font-medium" : "text-red-500 font-medium"}>
+                        {pl >= 0 ? "+" : ""}${pl.toLocaleString(undefined, { minimumFractionDigits: 2 })} ({pct}%)
+                      </span>
+                    );
+                  })()}
+                </div>
+              </>
             ) : (
-              <Skeleton className="h-[300px] w-full" />
+              <div className="flex items-center justify-center h-[280px] text-muted-foreground text-sm">
+                Waiting for Alpaca portfolio history...
+              </div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-3" data-testid="card-live-quotes">
+        {/* Top Movers from your positions */}
+        <Card className="lg:col-span-3" data-testid="card-top-movers">
           <CardHeader>
-            <CardTitle className="text-lg">Live Quotes</CardTitle>
+            <CardTitle className="text-lg">Your Positions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {summary?.quotes?.map((q) => (
-                <div key={q.symbol} className="flex items-center justify-between py-2 border-b border-border last:border-0" data-testid={`quote-row-${q.symbol}`}>
-                  <div>
-                    <span className="font-semibold">{q.symbol}</span>
-                    <span className="text-sm text-muted-foreground ml-2">${q.price.toFixed(2)}</span>
+            <div className="space-y-2">
+              {topMovers.length > 0 ? topMovers.map((p) => (
+                <div key={p.symbol} className="flex items-center justify-between py-2 border-b border-border last:border-0" data-testid={`quote-row-${p.symbol}`}>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-sm">{p.symbol}</span>
+                    <span className="text-xs text-muted-foreground">{p.qty} shares</span>
                   </div>
-                  <Badge
-                    variant={q.change >= 0 ? "default" : "destructive"}
-                    className={q.change >= 0 ? "bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25 border-0" : "bg-red-500/15 text-red-500 hover:bg-red-500/25 border-0"}
-                    data-testid={`badge-change-${q.symbol}`}
-                  >
-                    {q.change >= 0 ? "+" : ""}{q.changePercent}%
-                  </Badge>
+                  <div className="text-right">
+                    <div className="text-sm font-medium">${p.currentPrice.toFixed(2)}</div>
+                    <Badge
+                      variant={p.unrealizedPL >= 0 ? "default" : "destructive"}
+                      className={`text-xs ${p.unrealizedPL >= 0 ? "bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25 border-0" : "bg-red-500/15 text-red-500 hover:bg-red-500/25 border-0"}`}
+                      data-testid={`badge-change-${p.symbol}`}
+                    >
+                      {p.unrealizedPL >= 0 ? "+" : ""}{p.unrealizedPLPercent.toFixed(2)}% (${p.unrealizedPL >= 0 ? "+" : ""}${p.unrealizedPL.toFixed(2)})
+                    </Badge>
+                  </div>
                 </div>
-              )) || <Skeleton className="h-40 w-full" />}
+              )) : (
+                <p className="text-muted-foreground text-center py-8 text-sm">
+                  No open positions — connect Alpaca to see your holdings
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
       </div>
 
+      {/* Open Positions Table */}
       {summary?.positions && summary.positions.length > 0 && (
         <Card data-testid="card-open-positions">
           <CardHeader>
@@ -341,6 +414,7 @@ export default function Dashboard() {
           )}
         </CardContent>
       </Card>
+
       {(autoTradeStatus?.running || autoTradeStatus?.newsMonitorRunning || (autoTradeLog && autoTradeLog.length > 0)) && (
         <Card data-testid="card-auto-trade-activity">
           <CardHeader>

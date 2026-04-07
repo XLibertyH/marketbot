@@ -1,9 +1,10 @@
 import type { StockQuote, HistoricalDataPoint } from "@shared/schema";
+import { storage } from "./storage";
 
 const BASE_URL = "https://finnhub.io/api/v1";
 
 function getApiKey(): string {
-  const key = process.env.FINNHUB_API_KEY;
+  const key = storage.getApiKey("FINNHUB_API_KEY") || process.env.FINNHUB_API_KEY;
   if (!key) throw new Error("FINNHUB_API_KEY not configured");
   return key;
 }

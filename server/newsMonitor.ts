@@ -1,19 +1,31 @@
 import { storage } from "./storage";
 import { getFinnhubNews, getFinnhubMarketNews } from "./finnhub";
-import { analyzeStock, discoverStocks } from "./aiAnalysis";
+import { analyzeStock, discoverStocks, analyzeNewsSentiment } from "./aiAnalysis";
 import { getFinnhubQuote, getFinnhubCandles } from "./finnhub";
-import { getMockQuote, getMockHistoricalData, getMockSignal } from "./mockData";
 import { placeOrder, getPositions } from "./alpaca";
 import { validateOrder, recordOrderPlaced } from "./tradingGuards";
 import { addAutoTradeLog } from "./autoTrader";
+import { getMarketBuzz } from "./marketIntel";
+import { isHistoricalDataAvailable, getHistoricalPrices, getStatisticalSummary } from "./historicalData";
 import { log } from "./index";
 import type { StockQuote, HistoricalDataPoint } from "@shared/schema";
 
-const seenHeadlines = new Set<string>();
-const seenMarketHeadlines = new Set<string>();
+// Dedup with TTL — headlines expire after 10 minutes so fresh mock news keeps flowing
+const HEADLINE_TTL_MS = 10 * 60 * 1000;
+const seenHeadlines = new Map<string, number>(); // key -> timestamp
+const seenMarketHeadlines = new Map<string, number>();
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 let isMonitoring = false;
-const NEWS_POLL_INTERVAL_MS = 60_000;
+const NEWS_POLL_INTERVAL_MS = 30_000;
+
+function pruneExpired(map: Map<string, number>) {
+  const now = Date.now();
+  const toDelete: string[] = [];
+  map.forEach((ts, key) => {
+    if (now - ts > HEADLINE_TTL_MS) toDelete.push(key);
+  });
+  toDelete.forEach(key => map.delete(key));
+}
 
 function headlineKey(symbol: string, headline: string): string {
   return `${symbol}:${headline.slice(0, 100)}`;
@@ -25,13 +37,14 @@ function marketHeadlineKey(headline: string): string {
 
 async function checkNewsForSymbol(symbol: string): Promise<{ headline: string; source: string }[]> {
   try {
-    const articles = await getFinnhubNews(symbol, 10);
+    pruneExpired(seenHeadlines);
+    const articles = await getFinnhubNews(symbol, 20);
     const newArticles: { headline: string; source: string }[] = [];
 
     for (const article of articles) {
       const key = headlineKey(symbol, article.headline);
       if (!seenHeadlines.has(key)) {
-        seenHeadlines.add(key);
+        seenHeadlines.set(key, Date.now());
         newArticles.push({ headline: article.headline, source: article.source });
       }
     }
@@ -43,22 +56,40 @@ async function checkNewsForSymbol(symbol: string): Promise<{ headline: string; s
 }
 
 async function handleBreakingNews(symbol: string, newHeadlines: { headline: string; source: string }[]) {
-  const settings = await storage.getSettings();
 
-  for (const article of newHeadlines.slice(0, 3)) {
-    addAutoTradeLog("news", `Breaking: "${article.headline}" (${article.source})`, symbol);
+  const headlineBatch = newHeadlines.slice(0, 8);
+
+  // Score sentiment with AI
+  let sentimentScores: number[] = [];
+  try {
+    const results = await analyzeNewsSentiment(
+      headlineBatch.map(h => ({ headline: h.headline, symbol }))
+    );
+    sentimentScores = results.map(r => r.score);
+  } catch {
+    sentimentScores = headlineBatch.map(() => 0);
+  }
+
+  for (let i = 0; i < headlineBatch.length; i++) {
+    const article = headlineBatch[i];
+    const sentiment = sentimentScores[i] || 0;
+    const sentimentLabel = sentiment > 0.3 ? "bullish" : sentiment < -0.3 ? "bearish" : "neutral";
+    addAutoTradeLog("news", `Breaking: "${article.headline}" (${article.source}) [${sentimentLabel} ${sentiment.toFixed(2)}]`, symbol);
 
     await storage.addNews({
       symbol,
       headline: article.headline,
       summary: article.headline,
       source: article.source,
-      sentiment: 0,
+      sentiment,
       url: null,
     });
   }
 
-  addAutoTradeLog("news", `${newHeadlines.length} new headline${newHeadlines.length > 1 ? "s" : ""} detected — triggering AI analysis`, symbol);
+  const avgSentiment = sentimentScores.length > 0
+    ? sentimentScores.reduce((a, b) => a + b, 0) / sentimentScores.length
+    : 0;
+  addAutoTradeLog("news", `${newHeadlines.length} new headline${newHeadlines.length > 1 ? "s" : ""} detected (avg sentiment: ${avgSentiment.toFixed(2)}) — triggering AI analysis`, symbol);
 
   let quote: StockQuote;
   let history: HistoricalDataPoint[];
@@ -67,17 +98,27 @@ async function handleBreakingNews(symbol: string, newHeadlines: { headline: stri
     quote = await getFinnhubQuote(symbol);
     history = await getFinnhubCandles(symbol, 30);
   } catch {
-    quote = getMockQuote(symbol);
-    history = getMockHistoricalData(symbol, 30);
+    // Finnhub unavailable — try Alpaca position price
+    try {
+      const positions = await getPositions();
+      const pos = positions.find(p => p.symbol === symbol);
+      if (pos) {
+        quote = { symbol, price: parseFloat(pos.current_price), change: parseFloat(pos.current_price) - parseFloat(pos.lastday_price), changePercent: +(parseFloat(pos.change_today) * 100).toFixed(2), high: parseFloat(pos.current_price), low: parseFloat(pos.current_price), open: parseFloat(pos.lastday_price), previousClose: parseFloat(pos.lastday_price), volume: 0 };
+      } else {
+        return; // No price data
+      }
+    } catch { return; }
+    history = (isHistoricalDataAvailable() ? getHistoricalPrices(symbol, 30) : null) || [];
   }
 
   const allHeadlines = newHeadlines.map(h => h.headline);
+  const stats = isHistoricalDataAvailable() ? getStatisticalSummary(symbol) : null;
 
   let signalData: { signal: string; confidence: number; reason: string };
   try {
-    signalData = await analyzeStock(symbol, quote, history, allHeadlines);
+    signalData = await analyzeStock(symbol, quote, history, allHeadlines, stats);
   } catch {
-    signalData = getMockSignal(symbol, quote.price);
+    return; // AI unavailable — don't store a mock signal
   }
 
   await storage.addSignal({
@@ -176,13 +217,14 @@ async function handleBreakingNews(symbol: string, newHeadlines: { headline: stri
 
 async function checkMarketNews(): Promise<{ headline: string; source: string }[]> {
   try {
-    const articles = await getFinnhubMarketNews(15);
+    pruneExpired(seenMarketHeadlines);
+    const articles = await getFinnhubMarketNews(25);
     const newArticles: { headline: string; source: string }[] = [];
 
     for (const article of articles) {
       const key = marketHeadlineKey(article.headline);
       if (!seenMarketHeadlines.has(key)) {
-        seenMarketHeadlines.add(key);
+        seenMarketHeadlines.set(key, Date.now());
         newArticles.push({ headline: article.headline, source: article.source });
       }
     }
@@ -194,25 +236,53 @@ async function checkMarketNews(): Promise<{ headline: string; source: string }[]
 }
 
 async function handleMarketNews(newHeadlines: { headline: string; source: string }[]) {
-  for (const article of newHeadlines.slice(0, 5)) {
-    addAutoTradeLog("news", `Market News: "${article.headline}" (${article.source})`);
+  const marketBatch = newHeadlines.slice(0, 10);
+
+  // Score market news sentiment with AI
+  let marketSentiments: number[] = [];
+  try {
+    const results = await analyzeNewsSentiment(
+      marketBatch.map(h => ({ headline: h.headline }))
+    );
+    marketSentiments = results.map(r => r.score);
+  } catch {
+    marketSentiments = marketBatch.map(() => 0);
+  }
+
+  for (let i = 0; i < marketBatch.length; i++) {
+    const article = marketBatch[i];
+    const sentiment = marketSentiments[i] || 0;
+    const sentimentLabel = sentiment > 0.3 ? "bullish" : sentiment < -0.3 ? "bearish" : "neutral";
+    addAutoTradeLog("news", `Market News: "${article.headline}" (${article.source}) [${sentimentLabel} ${sentiment.toFixed(2)}]`);
 
     await storage.addNews({
       symbol: "MARKET",
       headline: article.headline,
       summary: article.headline,
       source: article.source,
-      sentiment: 0,
+      sentiment,
       url: null,
     });
   }
 
-  addAutoTradeLog("news", `${newHeadlines.length} new market headline${newHeadlines.length > 1 ? "s" : ""} detected`);
+  const avgMarketSentiment = marketSentiments.length > 0
+    ? marketSentiments.reduce((a, b) => a + b, 0) / marketSentiments.length
+    : 0;
+  addAutoTradeLog("news", `${newHeadlines.length} new market headline${newHeadlines.length > 1 ? "s" : ""} detected (avg sentiment: ${avgMarketSentiment.toFixed(2)})`);
 
   const settings = await storage.getSettings();
   const watchlist = await storage.getWatchlist();
   const currentSymbols = watchlist.map(w => w.symbol.toUpperCase());
   const marketHeadlineTexts = newHeadlines.map(h => h.headline);
+
+  // Augment with broad market buzz headlines so AI has social/SEC context
+  const buzz = getMarketBuzz();
+  if (buzz && buzz.topTickers.length > 0) {
+    const buzzContext = buzz.topTickers
+      .slice(0, 3)
+      .flatMap(b => b.headlines.slice(0, 1));
+    marketHeadlineTexts.push(...buzzContext);
+  }
 
   try {
     const suggestions = await discoverStocks(currentSymbols, marketHeadlineTexts);
@@ -238,15 +308,23 @@ async function handleMarketNews(newHeadlines: { headline: string; source: string
           quote = await getFinnhubQuote(item.symbol);
           history = await getFinnhubCandles(item.symbol, 30);
         } catch {
-          quote = getMockQuote(item.symbol);
-          history = getMockHistoricalData(item.symbol, 30);
+          try {
+            const positions = await getPositions();
+            const pos = positions.find(p => p.symbol === item.symbol);
+            if (pos) {
+              quote = { symbol: item.symbol, price: parseFloat(pos.current_price), change: parseFloat(pos.current_price) - parseFloat(pos.lastday_price), changePercent: +(parseFloat(pos.change_today) * 100).toFixed(2), high: parseFloat(pos.current_price), low: parseFloat(pos.current_price), open: parseFloat(pos.lastday_price), previousClose: parseFloat(pos.lastday_price), volume: 0 };
+            } else { continue; }
+          } catch { continue; }
+          history = (isHistoricalDataAvailable() ? getHistoricalPrices(item.symbol, 30) : null) || [];
         }
+
+        const itemStats = isHistoricalDataAvailable() ? getStatisticalSummary(item.symbol) : null;
 
         let signalData: { signal: string; confidence: number; reason: string };
         try {
-          signalData = await analyzeStock(item.symbol, quote, history, marketHeadlineTexts);
+          signalData = await analyzeStock(item.symbol, quote, history, marketHeadlineTexts, itemStats);
         } catch {
-          signalData = getMockSignal(item.symbol, quote.price);
+          continue; // AI unavailable — skip, don't store a mock signal
         }
 
         await storage.addSignal({
@@ -310,22 +388,20 @@ async function handleMarketNews(newHeadlines: { headline: string; source: string
 }
 
 async function pollAllNews() {
-  const settings = await storage.getSettings();
-
-  if (settings.simulationMode) return;
-
+  // ── Finnhub market news (requires API key, silently skipped if unavailable) ──
   try {
     const newMarketHeadlines = await checkMarketNews();
     if (newMarketHeadlines.length > 0) {
       await handleMarketNews(newMarketHeadlines);
     }
   } catch (err: any) {
-    log(`[NewsMonitor] Error checking market news: ${err.message}`, "news-monitor");
+    log(`[NewsMonitor] Finnhub market news unavailable: ${err.message}`, "news-monitor");
   }
 
   const watchlist = await storage.getWatchlist();
   if (watchlist.length === 0) return;
 
+  // ── Finnhub per-symbol news (requires API key, silently skipped if unavailable) ──
   for (const item of watchlist) {
     try {
       const newHeadlines = await checkNewsForSymbol(item.symbol);
@@ -333,7 +409,7 @@ async function pollAllNews() {
         await handleBreakingNews(item.symbol, newHeadlines);
       }
     } catch (err: any) {
-      log(`[NewsMonitor] Error checking ${item.symbol}: ${err.message}`, "news-monitor");
+      log(`[NewsMonitor] Finnhub news for ${item.symbol} unavailable: ${err.message}`, "news-monitor");
     }
   }
 }
@@ -342,29 +418,27 @@ export async function startNewsMonitor() {
   if (isMonitoring) return;
   isMonitoring = true;
 
-  addAutoTradeLog("start", "News monitor started — checking market & company headlines every 60 seconds");
+  addAutoTradeLog("start", "News monitor started — checking headlines every 30 seconds");
 
-  const settings = await storage.getSettings();
-  if (!settings.simulationMode) {
-    try {
-      const marketArticles = await getFinnhubMarketNews(15);
-      for (const article of marketArticles) {
-        seenMarketHeadlines.add(marketHeadlineKey(article.headline));
-      }
-      addAutoTradeLog("scan", `Indexed ${marketArticles.length} existing market headlines`);
-    } catch {}
-
-    const watchlist = await storage.getWatchlist();
-    for (const item of watchlist) {
-      try {
-        const articles = await getFinnhubNews(item.symbol, 10);
-        for (const article of articles) {
-          seenHeadlines.add(headlineKey(item.symbol, article.headline));
-        }
-      } catch {}
+  // Pre-index existing Finnhub headlines so we only alert on NEW ones (silently skipped if no key)
+  try {
+    const marketArticles = await getFinnhubMarketNews(25);
+    for (const article of marketArticles) {
+      seenMarketHeadlines.set(marketHeadlineKey(article.headline), Date.now());
     }
-    addAutoTradeLog("scan", `Indexed existing headlines for ${watchlist.length} stocks — monitoring for new ones`);
+    addAutoTradeLog("scan", `Indexed ${marketArticles.length} existing Finnhub market headlines`);
+  } catch {}
+
+  const watchlist = await storage.getWatchlist();
+  for (const item of watchlist) {
+    try {
+      const articles = await getFinnhubNews(item.symbol, 20);
+      for (const article of articles) {
+        seenHeadlines.set(headlineKey(item.symbol, article.headline), Date.now());
+      }
+    } catch {}
   }
+  addAutoTradeLog("scan", `Indexed existing headlines for ${watchlist.length} stocks — monitoring for new ones`);
 
   monitorInterval = setInterval(() => {
     pollAllNews().catch(err => log(`[NewsMonitor] Poll failed: ${err.message}`, "news-monitor"));
@@ -388,8 +462,8 @@ export function isNewsMonitorRunning(): boolean {
 
 export async function restartNewsMonitor() {
   stopNewsMonitor();
-  const settings = await storage.getSettings();
-  if (!settings.simulationMode) {
-    await startNewsMonitor();
-  }
+  // Clear dedup caches so fresh news flows immediately
+  seenHeadlines.clear();
+  seenMarketHeadlines.clear();
+  await startNewsMonitor();
 }

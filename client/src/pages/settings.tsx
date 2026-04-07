@@ -10,8 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, Gauge, Zap, AlertTriangle } from "lucide-react";
+import { Shield, Gauge, Zap, AlertTriangle, ChevronRight } from "lucide-react";
+import { ApiKeyDialog } from "@/components/api-key-dialog";
 import type { BotSettings } from "@shared/schema";
 import { useState } from "react";
 
@@ -83,16 +85,47 @@ export default function Settings() {
     queryKey: ["/api/alpaca/status"],
   });
 
+  const { data: apiKeyStatus } = useQuery<Record<string, any>>({
+    queryKey: ["/api/api-keys/status"],
+  });
+
+  const [activeDialog, setActiveDialog] = useState<"ollama" | "alpaca" | "finnhub" | null>(null);
+
   const updateSettings = useMutation({
     mutationFn: (data: Partial<BotSettings>) =>
       apiRequest("PATCH", "/api/settings", data),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
-      toast({ title: "Settings updated" });
+      let title = "Settings updated";
+      if (variables.autoTrade !== undefined) title = variables.autoTrade ? "Auto-trade enabled" : "Auto-trade disabled";
+      else if (variables.riskLevel) title = `Risk level: ${variables.riskLevel}`;
+      toast({ title });
     },
   });
 
-  if (isLoading || !settings) return null;
+  if (isLoading || !settings) {
+    return (
+      <div className="space-y-6 max-w-2xl">
+        <div>
+          <Skeleton className="h-8 w-40" />
+          <Skeleton className="h-4 w-72 mt-2" />
+        </div>
+        {[1, 2, 3, 4].map(i => (
+          <Card key={i}>
+            <CardHeader>
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-4 w-64 mt-1" />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-3/4" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
 
   if (!symbolsLoaded && settings.allowedSymbols !== undefined) {
     setSymbolsInput(settings.allowedSymbols);
@@ -117,25 +150,6 @@ export default function Settings() {
           <CardDescription>Control whether the bot uses simulated or live data</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label className="text-base">Simulation Mode</Label>
-              <p className="text-sm text-muted-foreground mt-1">
-                Use mock market data for testing without real API keys
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              {settings.simulationMode && (
-                <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30">Active</Badge>
-              )}
-              <Switch
-                checked={settings.simulationMode}
-                onCheckedChange={(checked) => updateSettings.mutate({ simulationMode: checked })}
-                data-testid="switch-simulation"
-              />
-            </div>
-          </div>
-
           <div className="flex items-center justify-between">
             <div>
               <Label className="text-base">Auto-Trade</Label>
@@ -485,41 +499,87 @@ export default function Settings() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Gauge className="h-5 w-5" />
-            API Connection Status
+            API Connections
           </CardTitle>
-          <CardDescription>Status of external service connections</CardDescription>
+          <CardDescription>Click any service to configure its connection</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-              <span className="font-medium">OpenAI (AI Analysis)</span>
-              <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white">Connected</Badge>
+          <div className="space-y-2">
+            <div
+              className="flex items-center justify-between p-3 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted/80 transition-colors"
+              onClick={() => setActiveDialog("ollama")}
+            >
+              <div className="flex flex-col">
+                <span className="font-medium">Local AI (Ollama)</span>
+                <span className="text-xs text-muted-foreground mt-0.5">
+                  {apiKeyStatus?.ollamaModel || "deepseek-r1:70b"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white">Connected</Badge>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </div>
             </div>
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-              <span className="font-medium">Alpaca (Trading)</span>
-              {alpacaStatus?.connected ? (
-                <div className="flex items-center gap-2">
-                  {isLive && (
-                    <Badge className="bg-red-500 hover:bg-red-600 text-white">
-                      <AlertTriangle className="h-3 w-3 mr-1" />
-                      LIVE
-                    </Badge>
-                  )}
-                  <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white">Connected</Badge>
-                </div>
-              ) : (
-                <Badge variant="outline" className="text-red-500 border-red-500/30">Not Connected</Badge>
-              )}
+
+            <div
+              className="flex items-center justify-between p-3 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted/80 transition-colors"
+              onClick={() => setActiveDialog("alpaca")}
+            >
+              <div className="flex flex-col">
+                <span className="font-medium">Alpaca Trading</span>
+                <span className="text-xs text-muted-foreground mt-0.5">
+                  {alpacaStatus?.connected ? (isLive ? "Live account" : "Paper trading") : "Not configured"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {alpacaStatus?.connected ? (
+                  <>
+                    {isLive && (
+                      <Badge className="bg-red-500 hover:bg-red-600 text-white">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        LIVE
+                      </Badge>
+                    )}
+                    <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white">Connected</Badge>
+                  </>
+                ) : (
+                  <Badge variant="outline" className="text-muted-foreground">Not Connected</Badge>
+                )}
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </div>
             </div>
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-              <span className="font-medium">Finnhub (Market Data)</span>
-              <Badge variant="outline" className={settings.simulationMode ? "text-amber-600 border-amber-500/30" : "bg-emerald-500 hover:bg-emerald-600 text-white border-0"}>
-                {settings.simulationMode ? "Mock Mode" : "Connected"}
-              </Badge>
+
+            <div
+              className="flex items-center justify-between p-3 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted/80 transition-colors"
+              onClick={() => setActiveDialog("finnhub")}
+            >
+              <div className="flex flex-col">
+                <span className="font-medium">Finnhub Market Data</span>
+                <span className="text-xs text-muted-foreground mt-0.5">
+                  {apiKeyStatus?.finnhub ? "API key configured" : "Free key at finnhub.io"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {apiKeyStatus?.finnhub ? (
+                  <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white">
+                    Connected
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-muted-foreground">Not Connected</Badge>
+                )}
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </div>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      <ApiKeyDialog
+        service={activeDialog}
+        open={activeDialog !== null}
+        onOpenChange={(open) => { if (!open) setActiveDialog(null); }}
+        currentStatus={apiKeyStatus}
+      />
     </div>
   );
 }

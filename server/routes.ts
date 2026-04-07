@@ -1,14 +1,16 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
-import { getMockQuote, getMockHistoricalData, getMockNews, getMockSignal } from "./mockData";
+import { storage, isAllowedApiKey } from "./storage";
 import { getFinnhubQuote, getFinnhubCandles, getFinnhubNews, getFinnhubMarketNews } from "./finnhub";
-import { getAccount, getPositions, getOrders, placeOrder, cancelOrder, cancelAllOrders, closePosition, isAlpacaConnected, isLiveTrading } from "./alpaca";
+import { getAccount, getPositions, getOrders, placeOrder, cancelOrder, cancelAllOrders, closePosition, isAlpacaConnected, isLiveTrading, getPortfolioHistory } from "./alpaca";
 import { validateOrder, recordOrderPlaced, preflightCheck } from "./tradingGuards";
 import { analyzeStock } from "./aiAnalysis";
 import { getAutoTradeLog, getAutoTradeStatus, restartAutoTrader, startAutoTrader } from "./autoTrader";
 import { getKellyStats } from "./kellyCriterion";
 import { startNewsMonitor, stopNewsMonitor, restartNewsMonitor, isNewsMonitorRunning } from "./newsMonitor";
+import { getMarketBuzz, startMarketIntelMonitor } from "./marketIntel";
+import { getThoughts, getThinkingStatus, runThinkingSession, startThinkingLoop } from "./aiThoughts";
+import { isHistoricalDataAvailable, getHistoricalPrices, getStatisticalSummary } from "./historicalData";
 import { insertWatchlistSchema, insertBotSettingsSchema } from "@shared/schema";
 import type { StockQuote, HistoricalDataPoint } from "@shared/schema";
 
@@ -59,137 +61,122 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  // Build quotes from Alpaca positions (real prices, no mock data)
   app.get("/api/quotes", async (_req, res) => {
-    const watchlist = await storage.getWatchlist();
-    const settings = await storage.getSettings();
-
-    if (!settings.simulationMode) {
-      try {
-        const quotes: StockQuote[] = [];
-        for (const item of watchlist) {
-          try {
-            const q = await getFinnhubQuote(item.symbol);
-            quotes.push(q);
-          } catch {
-            quotes.push(getMockQuote(item.symbol));
-          }
-        }
-        return res.json(quotes);
-      } catch {
-        // fall through to mock
-      }
+    try {
+      const positions = await getPositions();
+      const quotes: StockQuote[] = positions.map(p => ({
+        symbol: p.symbol,
+        price: parseFloat(p.current_price),
+        change: parseFloat(p.current_price) - parseFloat(p.lastday_price),
+        changePercent: +(parseFloat(p.change_today) * 100).toFixed(2),
+        high: parseFloat(p.current_price),
+        low: parseFloat(p.current_price),
+        open: parseFloat(p.lastday_price),
+        previousClose: parseFloat(p.lastday_price),
+        volume: 0,
+      }));
+      res.json(quotes);
+    } catch {
+      res.json([]);
     }
-
-    const quotes = watchlist.map(item => getMockQuote(item.symbol));
-    res.json(quotes);
   });
 
   app.get("/api/quote/:symbol", async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
-    const settings = await storage.getSettings();
-
-    if (!settings.simulationMode) {
-      try {
-        const quote = await getFinnhubQuote(symbol);
-        return res.json(quote);
-      } catch {
-        // fall through to mock
+    try {
+      // Try Alpaca position first (free, no extra key needed)
+      const position = await getPositions();
+      const match = position.find(p => p.symbol === symbol);
+      if (match) {
+        return res.json({
+          symbol,
+          price: parseFloat(match.current_price),
+          change: parseFloat(match.current_price) - parseFloat(match.lastday_price),
+          changePercent: +(parseFloat(match.change_today) * 100).toFixed(2),
+          high: parseFloat(match.current_price),
+          low: parseFloat(match.current_price),
+          open: parseFloat(match.lastday_price),
+          previousClose: parseFloat(match.lastday_price),
+          volume: 0,
+        });
       }
+      // Fallback to Finnhub if available
+      res.json(await getFinnhubQuote(symbol));
+    } catch {
+      res.status(503).json({ error: `No price data available for ${symbol}` });
     }
-
-    res.json(getMockQuote(symbol));
   });
 
   app.get("/api/history/:symbol", async (req, res) => {
     const days = parseInt(req.query.days as string) || 90;
     const symbol = req.params.symbol.toUpperCase();
-    const settings = await storage.getSettings();
-
-    if (!settings.simulationMode) {
-      try {
-        const data = await getFinnhubCandles(symbol, days);
-        return res.json(data);
-      } catch {
-        // fall through to mock
+    try {
+      res.json(await getFinnhubCandles(symbol, days));
+    } catch {
+      if (isHistoricalDataAvailable()) {
+        const data = getHistoricalPrices(symbol, days);
+        if (data && data.length > 0) return res.json(data);
       }
+      res.json([]); // No data — don't fake it
     }
+  });
 
-    res.json(getMockHistoricalData(symbol, days));
+  // Portfolio equity history from Alpaca (for dashboard chart)
+  app.get("/api/portfolio/history", async (req, res) => {
+    const period = (req.query.period as string) || "1M";
+    const timeframe = (req.query.timeframe as string) || "1D";
+    try {
+      const history = await getPortfolioHistory(period, timeframe);
+      // Transform to chart-friendly format
+      const points = (history.timestamp || []).map((ts: number, i: number) => ({
+        date: new Date(ts * 1000).toISOString().split("T")[0],
+        equity: history.equity[i],
+        profitLoss: history.profit_loss[i],
+        profitLossPct: history.profit_loss_pct[i],
+      }));
+      res.json({ baseValue: history.base_value, timeframe: history.timeframe, points });
+    } catch (err: any) {
+      res.status(503).json({ error: err.message || "Portfolio history unavailable" });
+    }
+  });
+
+  app.get("/api/stats/:symbol", async (req, res) => {
+    const symbol = req.params.symbol.toUpperCase();
+    if (!isHistoricalDataAvailable()) {
+      return res.status(503).json({ error: "Historical database not loaded" });
+    }
+    const stats = getStatisticalSummary(symbol);
+    if (!stats) {
+      return res.status(404).json({ error: `No historical data for ${symbol}` });
+    }
+    res.json(stats);
   });
 
   app.get("/api/news", async (req, res) => {
     const symbol = req.query.symbol as string;
-    const settings = await storage.getSettings();
-
-    if (!settings.simulationMode) {
-      try {
-        if (symbol === "MARKET") {
-          const marketNews = await getFinnhubMarketNews(20);
-          for (const n of marketNews) {
-            await storage.addNews({
-              symbol: "MARKET",
-              headline: n.headline,
-              summary: n.summary,
-              source: n.source,
-              sentiment: 0,
-              url: n.url,
-            });
-          }
-          const news = await storage.getNews("MARKET");
-          return res.json(news);
-        } else if (symbol) {
-          const liveNews = await getFinnhubNews(symbol.toUpperCase());
-          for (const n of liveNews) {
-            await storage.addNews(n);
-          }
-          const news = await storage.getNews(symbol.toUpperCase());
-          return res.json(news);
-        } else {
-          const marketNews = await getFinnhubMarketNews(10);
-          for (const n of marketNews) {
-            await storage.addNews({
-              symbol: "MARKET",
-              headline: n.headline,
-              summary: n.summary,
-              source: n.source,
-              sentiment: 0,
-              url: n.url,
-            });
-          }
-          const watchlist = await storage.getWatchlist();
-          for (const item of watchlist.slice(0, 5)) {
-            const liveNews = await getFinnhubNews(item.symbol, 5);
-            for (const n of liveNews) {
-              await storage.addNews(n);
-            }
-          }
-          const news = await storage.getNews();
-          return res.json(news);
+    try {
+      if (symbol === "MARKET") {
+        const marketNews = await getFinnhubMarketNews(20);
+        for (const n of marketNews) await storage.addNews({ symbol: "MARKET", headline: n.headline, summary: n.summary, source: n.source, sentiment: 0, url: n.url });
+        return res.json(await storage.getNews("MARKET"));
+      } else if (symbol) {
+        const liveNews = await getFinnhubNews(symbol.toUpperCase());
+        for (const n of liveNews) await storage.addNews(n);
+        return res.json(await storage.getNews(symbol.toUpperCase()));
+      } else {
+        const marketNews = await getFinnhubMarketNews(10);
+        for (const n of marketNews) await storage.addNews({ symbol: "MARKET", headline: n.headline, summary: n.summary, source: n.source, sentiment: 0, url: n.url });
+        const watchlist = await storage.getWatchlist();
+        for (const item of watchlist.slice(0, 5)) {
+          const liveNews = await getFinnhubNews(item.symbol, 5);
+          for (const n of liveNews) await storage.addNews(n);
         }
-      } catch {
-        // fall through to mock
+        return res.json(await storage.getNews());
       }
+    } catch {
+      res.json(await storage.getNews(symbol?.toUpperCase()));
     }
-
-    if (symbol) {
-      const mockNews = getMockNews(symbol.toUpperCase());
-      for (const n of mockNews) {
-        await storage.addNews(n);
-      }
-    }
-    const news = await storage.getNews(symbol?.toUpperCase());
-    if (news.length === 0 && !symbol) {
-      const watchlist = await storage.getWatchlist();
-      for (const item of watchlist.slice(0, 3)) {
-        const mockNews = getMockNews(item.symbol, 3);
-        for (const n of mockNews) {
-          await storage.addNews(n);
-        }
-      }
-      const allNews = await storage.getNews();
-      return res.json(allNews);
-    }
-    res.json(news);
   });
 
   app.get("/api/signals", async (req, res) => {
@@ -210,45 +197,57 @@ export async function registerRoutes(
     let headlines: string[];
 
     try {
-      if (!settings.simulationMode) {
-        quote = await getFinnhubQuote(upperSymbol);
-        history = await getFinnhubCandles(upperSymbol, 30);
-        const liveNews = await getFinnhubNews(upperSymbol, 3);
-        headlines = liveNews.map(n => n.headline);
-      } else {
-        quote = getMockQuote(upperSymbol);
-        history = getMockHistoricalData(upperSymbol, 30);
-        headlines = getMockNews(upperSymbol, 3).map(n => n.headline);
-      }
+      quote = await getFinnhubQuote(upperSymbol);
+      history = await getFinnhubCandles(upperSymbol, 30);
+      headlines = (await getFinnhubNews(upperSymbol, 8)).map(n => n.headline);
     } catch {
-      quote = getMockQuote(upperSymbol);
-      history = getMockHistoricalData(upperSymbol, 30);
-      headlines = getMockNews(upperSymbol, 3).map(n => n.headline);
+      // Finnhub unavailable — try Alpaca position for price, historical DB for candles
+      try {
+        const positions = await getPositions();
+        const pos = positions.find(p => p.symbol === upperSymbol);
+        if (pos) {
+          quote = { symbol: upperSymbol, price: parseFloat(pos.current_price), change: parseFloat(pos.current_price) - parseFloat(pos.lastday_price), changePercent: +(parseFloat(pos.change_today) * 100).toFixed(2), high: parseFloat(pos.current_price), low: parseFloat(pos.current_price), open: parseFloat(pos.lastday_price), previousClose: parseFloat(pos.lastday_price), volume: 0 };
+        } else {
+          return res.status(503).json({ error: `No price data for ${upperSymbol} — check Finnhub API key` });
+        }
+      } catch {
+        return res.status(503).json({ error: `No price data for ${upperSymbol} — check API keys` });
+      }
+      history = (isHistoricalDataAvailable() ? getHistoricalPrices(upperSymbol, 30) : null) || [];
+      headlines = [];
     }
 
-    let signalData: { signal: string; confidence: number; reason: string; price: number };
-
+    const stats = isHistoricalDataAvailable() ? getStatisticalSummary(upperSymbol) : null;
+    let aiResult: { signal: string; confidence: number; reason: string };
     try {
-      const aiResult = await analyzeStock(upperSymbol, quote, history, headlines);
-      signalData = { ...aiResult, price: quote.price };
-    } catch {
-      signalData = { ...getMockSignal(upperSymbol, quote.price), price: quote.price };
+      aiResult = await analyzeStock(upperSymbol, quote, history, headlines, stats);
+    } catch (err: any) {
+      return res.status(503).json({ error: "AI analysis unavailable — try again shortly", detail: err.message });
     }
 
     const signal = await storage.addSignal({
       symbol: upperSymbol,
-      signal: signalData.signal,
-      confidence: signalData.confidence,
-      price: signalData.price,
-      reason: signalData.reason,
+      signal: aiResult.signal,
+      confidence: aiResult.confidence,
+      price: quote.price,
+      reason: aiResult.reason,
     });
 
     res.json(signal);
   });
 
+  app.delete("/api/signals/all", async (_req, res) => {
+    await storage.clearSignals();
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/signals/:id", async (req, res) => {
+    await storage.removeSignal(parseInt(req.params.id));
+    res.json({ ok: true });
+  });
+
   app.post("/api/signals/generate-all", async (_req, res) => {
     const watchlist = await storage.getWatchlist();
-    const settings = await storage.getSettings();
     const signals = [];
 
     for (const item of watchlist) {
@@ -257,36 +256,41 @@ export async function registerRoutes(
       let headlines: string[];
 
       try {
-        if (!settings.simulationMode) {
-          quote = await getFinnhubQuote(item.symbol);
-          history = await getFinnhubCandles(item.symbol, 30);
-          const liveNews = await getFinnhubNews(item.symbol, 3);
-          headlines = liveNews.map(n => n.headline);
-        } else {
-          quote = getMockQuote(item.symbol);
-          history = getMockHistoricalData(item.symbol, 30);
-          headlines = getMockNews(item.symbol, 3).map(n => n.headline);
-        }
+        quote = await getFinnhubQuote(item.symbol);
+        history = await getFinnhubCandles(item.symbol, 30);
+        headlines = (await getFinnhubNews(item.symbol, 8)).map(n => n.headline);
       } catch {
-        quote = getMockQuote(item.symbol);
-        history = getMockHistoricalData(item.symbol, 30);
-        headlines = getMockNews(item.symbol, 3).map(n => n.headline);
+        // Finnhub unavailable — try Alpaca for price, historical DB for candles
+        try {
+          const positions = await getPositions();
+          const pos = positions.find(p => p.symbol === item.symbol);
+          if (pos) {
+            quote = { symbol: item.symbol, price: parseFloat(pos.current_price), change: parseFloat(pos.current_price) - parseFloat(pos.lastday_price), changePercent: +(parseFloat(pos.change_today) * 100).toFixed(2), high: parseFloat(pos.current_price), low: parseFloat(pos.current_price), open: parseFloat(pos.lastday_price), previousClose: parseFloat(pos.lastday_price), volume: 0 };
+          } else {
+            continue; // No data for this symbol — skip
+          }
+        } catch {
+          continue;
+        }
+        history = (isHistoricalDataAvailable() ? getHistoricalPrices(item.symbol, 30) : null) || [];
+        headlines = [];
       }
 
-      let signalData: { signal: string; confidence: number; reason: string; price: number };
+      const stats = isHistoricalDataAvailable() ? getStatisticalSummary(item.symbol) : null;
+
+      let aiResult: { signal: string; confidence: number; reason: string };
       try {
-        const aiResult = await analyzeStock(item.symbol, quote, history, headlines);
-        signalData = { ...aiResult, price: quote.price };
+        aiResult = await analyzeStock(item.symbol, quote, history, headlines, stats);
       } catch {
-        signalData = { ...getMockSignal(item.symbol, quote.price), price: quote.price };
+        continue; // AI unavailable — skip this symbol
       }
 
       const signal = await storage.addSignal({
         symbol: item.symbol,
-        signal: signalData.signal,
-        confidence: signalData.confidence,
-        price: signalData.price,
-        reason: signalData.reason,
+        signal: aiResult.signal,
+        confidence: aiResult.confidence,
+        price: quote.price,
+        reason: aiResult.reason,
       });
       signals.push(signal);
     }
@@ -296,22 +300,6 @@ export async function registerRoutes(
 
   app.get("/api/portfolio/summary", async (_req, res) => {
     const watchlist = await storage.getWatchlist();
-    const settings = await storage.getSettings();
-
-    let quotes: StockQuote[];
-    if (!settings.simulationMode) {
-      quotes = [];
-      for (const item of watchlist) {
-        try {
-          quotes.push(await getFinnhubQuote(item.symbol));
-        } catch {
-          quotes.push(getMockQuote(item.symbol));
-        }
-      }
-    } else {
-      quotes = watchlist.map(item => getMockQuote(item.symbol));
-    }
-
     const signals = await storage.getSignals();
     const buySignals = signals.filter(s => s.signal === "BUY").length;
     const sellSignals = signals.filter(s => s.signal === "SELL").length;
@@ -324,6 +312,7 @@ export async function registerRoutes(
     let buyingPower = 0;
     let longMarketValue = 0;
     let positions: any[] = [];
+    let quotes: StockQuote[] = [];
 
     try {
       const account = await getAccount();
@@ -347,11 +336,22 @@ export async function registerRoutes(
           unrealizedPLPercent: parseFloat(p.unrealized_plpc) * 100,
           side: p.side,
         }));
+
+        // Build quotes from Alpaca positions (real prices, stable when market closed)
+        quotes = alpacaPositions.map(p => ({
+          symbol: p.symbol,
+          price: parseFloat(p.current_price),
+          change: parseFloat(p.current_price) - parseFloat(p.lastday_price),
+          changePercent: +(parseFloat(p.change_today) * 100).toFixed(2),
+          high: parseFloat(p.current_price),
+          low: parseFloat(p.current_price),
+          open: parseFloat(p.lastday_price),
+          previousClose: parseFloat(p.lastday_price),
+          volume: 0,
+        }));
       } catch {}
-    } catch {
-      totalValue = quotes.reduce((sum, q) => sum + q.price * 10, 0);
-      totalChange = quotes.reduce((sum, q) => sum + q.change * 10, 0);
-      totalChangePercent = +((totalChange / (totalValue - totalChange || 1)) * 100).toFixed(2);
+    } catch (err: any) {
+      // Alpaca not connected — return zeros, not fake data
     }
 
     res.json({
@@ -467,11 +467,81 @@ export async function registerRoutes(
     res.json({ connected, isLive: isLiveTrading() });
   });
 
+  // --- API Key Management ---
+  app.get("/api/api-keys/status", async (_req, res) => {
+    res.json(storage.getAllApiKeyStatus());
+  });
+
+  app.put("/api/api-keys", async (req, res) => {
+    const { key, value } = req.body;
+    if (!key || typeof key !== "string") {
+      return res.status(400).json({ error: "Missing 'key' field" });
+    }
+    if (!isAllowedApiKey(key)) {
+      return res.status(400).json({ error: `Invalid key name: ${key}` });
+    }
+    storage.setApiKey(key, String(value || ""));
+    res.json({ ok: true });
+  });
+
+  app.post("/api/api-keys/test", async (req, res) => {
+    const { service } = req.body;
+    try {
+      if (service === "alpaca") {
+        const account = await getAccount();
+        res.json({ connected: true, details: `Account ${account.account_number} (${account.status})` });
+      } else if (service === "finnhub") {
+        const quote = await getFinnhubQuote("AAPL");
+        res.json({ connected: true, details: `AAPL: $${quote.price}` });
+      } else if (service === "ollama") {
+        const url = storage.getApiKey("OLLAMA_BASE_URL") || process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+        const base = url.replace(/\/v1\/?$/, "");
+        const resp = await fetch(`${base}/api/tags`);
+        if (!resp.ok) throw new Error(`Ollama returned ${resp.status}`);
+        const data = await resp.json();
+        const models = (data.models || []).map((m: any) => m.name).join(", ");
+        res.json({ connected: true, details: `Models: ${models || "none found"}` });
+      } else {
+        res.status(400).json({ connected: false, error: "Unknown service" });
+      }
+    } catch (error: any) {
+      res.json({ connected: false, error: error.message || "Connection failed" });
+    }
+  });
+
   app.get("/api/autotrade/status", async (_req, res) => {
     const status = getAutoTradeStatus();
     const settings = await storage.getSettings();
     const kellyStats = settings.riskLevel === "medium-controlled" ? getKellyStats() : null;
     res.json({ ...status, newsMonitorRunning: isNewsMonitorRunning(), kellyStats });
+  });
+
+  app.get("/api/market-intel", (_req, res) => {
+    const buzz = getMarketBuzz();
+    if (!buzz) {
+      return res.json({
+        scannedAt: null,
+        totalMentions: 0,
+        topTickers: [],
+        sourceStatus: { reddit: "skipped", rss: "skipped", sec: "skipped" },
+      });
+    }
+    res.json(buzz);
+  });
+
+  // --- AI Thoughts ---
+  app.get("/api/ai-thoughts", (req, res) => {
+    const limit = parseInt(req.query.limit as string) || 20;
+    res.json({ thoughts: getThoughts(limit), status: getThinkingStatus() });
+  });
+
+  app.post("/api/ai-thoughts/trigger", async (_req, res) => {
+    const status = getThinkingStatus();
+    if (status.isThinking) {
+      return res.json({ ok: false, message: "Already thinking — session in progress" });
+    }
+    runThinkingSession().catch(() => {});
+    res.json({ ok: true, message: "Thinking session triggered" });
   });
 
   app.get("/api/autotrade/log", (req, res) => {
@@ -492,13 +562,65 @@ export async function registerRoutes(
     }
   });
 
+  // ── Signal Refresh Loop (every 2 min, independent of auto-trader) ──
+  async function refreshAllSignals() {
+    try {
+      const wl = await storage.getWatchlist();
+      for (const item of wl) {
+        try {
+          let quote: StockQuote, history: HistoricalDataPoint[], headlines: string[];
+          try {
+            quote = await getFinnhubQuote(item.symbol);
+            history = await getFinnhubCandles(item.symbol, 30);
+            headlines = (await getFinnhubNews(item.symbol, 8)).map(n => n.headline);
+          } catch {
+            // Finnhub unavailable — try Alpaca position price, historical DB candles
+            try {
+              const positions = await getPositions();
+              const pos = positions.find(p => p.symbol === item.symbol);
+              if (pos) {
+                quote = { symbol: item.symbol, price: parseFloat(pos.current_price), change: parseFloat(pos.current_price) - parseFloat(pos.lastday_price), changePercent: +(parseFloat(pos.change_today) * 100).toFixed(2), high: parseFloat(pos.current_price), low: parseFloat(pos.current_price), open: parseFloat(pos.lastday_price), previousClose: parseFloat(pos.lastday_price), volume: 0 };
+              } else {
+                continue;
+              }
+            } catch { continue; }
+            history = (isHistoricalDataAvailable() ? getHistoricalPrices(item.symbol, 30) : null) || [];
+            headlines = [];
+          }
+          const stats = isHistoricalDataAvailable() ? getStatisticalSummary(item.symbol) : null;
+          const ai = await analyzeStock(item.symbol, quote, history, headlines, stats);
+          await storage.addSignal({ symbol: item.symbol, signal: ai.signal as any, confidence: ai.confidence, price: quote.price, reason: ai.reason });
+        } catch { /* skip individual failures */ }
+      }
+    } catch { /* skip entire pass on error */ }
+  }
+  setInterval(() => { refreshAllSignals().catch(() => {}); }, 2 * 60 * 1000);
+  setTimeout(() => { refreshAllSignals().catch(() => {}); }, 15_000); // first run after 15s
+
+  // ── Alpaca → Watchlist Sync (every 30s — add positions not on watchlist) ──
+  async function syncPositionsToWatchlist() {
+    try {
+      const positions = await getPositions();
+      const watchlist = await storage.getWatchlist();
+      const existing = new Set(watchlist.map(w => w.symbol));
+      for (const pos of positions) {
+        if (!existing.has(pos.symbol)) {
+          await storage.addWatchlistItem({ symbol: pos.symbol, name: pos.symbol });
+          console.log(`[WatchlistSync] Auto-added ${pos.symbol} from Alpaca positions`);
+        }
+      }
+    } catch { /* Alpaca not connected yet, skip silently */ }
+  }
+  setInterval(() => { syncPositionsToWatchlist().catch(() => {}); }, 30_000);
+  syncPositionsToWatchlist().catch(() => {});
+
   const settings = await storage.getSettings();
   if (settings.autoTrade) {
     startAutoTrader().catch(err => console.error("Failed to start auto-trader:", err));
   }
-  if (!settings.simulationMode) {
-    startNewsMonitor().catch(err => console.error("Failed to start news monitor:", err));
-  }
+  startNewsMonitor().catch(err => console.error("Failed to start news monitor:", err));
+  startMarketIntelMonitor();
+  startThinkingLoop();
 
   return httpServer;
 }

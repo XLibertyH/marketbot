@@ -91,6 +91,7 @@ export default function Trading() {
 
   const { data: status } = useQuery<{ connected: boolean; isLive: boolean }>({
     queryKey: ["/api/alpaca/status"],
+    refetchInterval: 1000,
   });
 
   const { data: settings } = useQuery<BotSettings>({
@@ -100,16 +101,19 @@ export default function Trading() {
   const { data: account, isLoading: accountLoading } = useQuery<AlpacaAccount>({
     queryKey: ["/api/alpaca/account"],
     enabled: status?.connected === true,
+    refetchInterval: 1000,
   });
 
   const { data: positions, isLoading: positionsLoading } = useQuery<AlpacaPosition[]>({
     queryKey: ["/api/alpaca/positions"],
     enabled: status?.connected === true,
+    refetchInterval: 1000,
   });
 
   const { data: orders, isLoading: ordersLoading } = useQuery<AlpacaOrder[]>({
     queryKey: ["/api/alpaca/orders"],
     enabled: status?.connected === true,
+    refetchInterval: 1000,
   });
 
   const placeOrderMutation = useMutation({

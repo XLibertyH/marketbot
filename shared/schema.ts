@@ -85,3 +85,21 @@ export interface HistoricalDataPoint {
   close: number;
   volume: number;
 }
+
+export interface StatisticalSummary {
+  ticker: string;
+  high52w: number;
+  low52w: number;
+  avgVolume20d: number;
+  avgVolume90d: number;
+  volatility20d: number;
+  volatility90d: number;
+  ytdReturn: number;
+  return1y: number;
+  return3y: number;
+  return5y: number;
+  sma50: number;
+  sma200: number;
+  rsi14: number;
+  atr14: number;
+}

@@ -9,7 +9,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
 import { useState } from "react";
-import { ArrowUpRight, ArrowDownRight, Minus, Zap, RefreshCw } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Minus, Zap, RefreshCw, Trash2, X } from "lucide-react";
 import type { TradingSignal, WatchlistItem } from "@shared/schema";
 
 export default function Signals() {
@@ -17,6 +17,7 @@ export default function Signals() {
 
   const { data: signals, isLoading } = useQuery<TradingSignal[]>({
     queryKey: ["/api/signals"],
+    refetchInterval: 1000,
   });
 
   const { data: watchlist } = useQuery<WatchlistItem[]>({
@@ -40,9 +41,27 @@ export default function Signals() {
     },
   });
 
+  const deleteSignal = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/signals/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/signals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/portfolio/summary"] });
+    },
+  });
+
+  const clearAll = useMutation({
+    mutationFn: () => apiRequest("DELETE", "/api/signals/all"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/signals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/portfolio/summary"] });
+    },
+  });
+
   const filtered = filterSymbol === "all"
     ? signals
     : signals?.filter(s => s.symbol === filterSymbol);
+
+  const hasSignals = signals && signals.length > 0;
 
   return (
     <div className="space-y-6" data-testid="signals-page">
@@ -51,14 +70,28 @@ export default function Signals() {
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-signals-title">Trading Signals</h1>
           <p className="text-muted-foreground">AI-powered buy/sell recommendations</p>
         </div>
-        <Button
-          onClick={() => generateAll.mutate()}
-          disabled={generateAll.isPending}
-          data-testid="button-generate-all"
-        >
-          <Zap className="mr-2 h-4 w-4" />
-          {generateAll.isPending ? "Analyzing..." : "Analyze All"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {hasSignals && (
+            <Button
+              variant="outline"
+              onClick={() => clearAll.mutate()}
+              disabled={clearAll.isPending}
+              data-testid="button-clear-signals"
+              className="text-red-500 hover:text-red-600 hover:bg-red-500/10 border-red-200"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {clearAll.isPending ? "Clearing..." : "Clear All"}
+            </Button>
+          )}
+          <Button
+            onClick={() => generateAll.mutate()}
+            disabled={generateAll.isPending}
+            data-testid="button-generate-all"
+          >
+            <Zap className="mr-2 h-4 w-4" />
+            {generateAll.isPending ? "Analyzing..." : "Analyze All"}
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-4">
@@ -74,7 +107,7 @@ export default function Signals() {
           </SelectContent>
         </Select>
 
-        <div className="flex gap-2 ml-auto">
+        <div className="flex gap-2 ml-auto flex-wrap">
           {watchlist?.map(w => (
             <Button
               key={w.symbol}
@@ -103,10 +136,10 @@ export default function Signals() {
             <Card key={sig.id} data-testid={`signal-detail-${sig.id}`}>
               <CardContent className="p-5">
                 <div className="flex items-start gap-4">
-                  <div className={`p-2.5 rounded-lg ${sig.signal === "BUY" ? "bg-emerald-500/15 text-emerald-600" : sig.signal === "SELL" ? "bg-red-500/15 text-red-500" : "bg-amber-500/15 text-amber-600"}`}>
+                  <div className={`p-2.5 rounded-lg flex-shrink-0 ${sig.signal === "BUY" ? "bg-emerald-500/15 text-emerald-600" : sig.signal === "SELL" ? "bg-red-500/15 text-red-500" : "bg-amber-500/15 text-amber-600"}`}>
                     {sig.signal === "BUY" ? <ArrowUpRight className="h-5 w-5" /> : sig.signal === "SELL" ? <ArrowDownRight className="h-5 w-5" /> : <Minus className="h-5 w-5" />}
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="text-lg font-semibold">{sig.symbol}</span>
                       <Badge className={`${sig.signal === "BUY" ? "bg-emerald-500 hover:bg-emerald-600" : sig.signal === "SELL" ? "bg-red-500 hover:bg-red-600" : "bg-amber-500 hover:bg-amber-600"} text-white`}>
@@ -124,6 +157,16 @@ export default function Signals() {
                       <span className="text-sm font-medium">{(sig.confidence * 100).toFixed(0)}%</span>
                     </div>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex-shrink-0 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 h-8 w-8 p-0"
+                    onClick={() => deleteSignal.mutate(sig.id)}
+                    disabled={deleteSignal.isPending}
+                    data-testid={`button-delete-signal-${sig.id}`}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -132,7 +175,7 @@ export default function Signals() {
       ) : (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
-            No signals generated yet. Click "Analyze All" to generate AI-powered trading signals for your watchlist.
+            No signals yet — the AI is working on it, or click "Analyze All" to generate now.
           </CardContent>
         </Card>
       )}

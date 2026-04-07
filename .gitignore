@@ -1,6 +1,12 @@
 node_modules
 dist
+.env
 .DS_Store
 server/public
 vite.config.ts.*
 *.tar.gz
+server/data/prices.sqlite
+server/data/*.sqlite-shm
+server/data/*.sqlite-wal
+.local/
+intelmarketbot/

@@ -1,12 +1,17 @@
-const ALPACA_BASE = process.env.ALPACA_BASE_URL || "https://paper-api.alpaca.markets";
+import { storage } from "./storage";
+
+function getBaseUrl(): string {
+  return storage.getApiKey("ALPACA_BASE_URL") || process.env.ALPACA_BASE_URL || "https://paper-api.alpaca.markets";
+}
 
 function isLiveTrading(): boolean {
-  return ALPACA_BASE.includes("api.alpaca.markets") && !ALPACA_BASE.includes("paper");
+  const base = getBaseUrl();
+  return base.includes("api.alpaca.markets") && !base.includes("paper");
 }
 
 function getHeaders(): Record<string, string> {
-  const key = process.env.ALPACA_API_KEY;
-  const secret = process.env.ALPACA_SECRET_KEY;
+  const key = storage.getApiKey("ALPACA_API_KEY") || process.env.ALPACA_API_KEY;
+  const secret = storage.getApiKey("ALPACA_SECRET_KEY") || process.env.ALPACA_SECRET_KEY;
   if (!key || !secret) throw new Error("Alpaca API keys not configured");
   return {
     "APCA-API-KEY-ID": key,
@@ -31,7 +36,7 @@ async function alpacaGet(base: string, path: string, params?: Record<string, str
 }
 
 async function alpacaPost(path: string, body: Record<string, any>): Promise<any> {
-  const res = await fetch(`${ALPACA_BASE}${path}`, {
+  const res = await fetch(`${getBaseUrl()}${path}`, {
     method: "POST",
     headers: getHeaders(),
     body: JSON.stringify(body),
@@ -44,7 +49,7 @@ async function alpacaPost(path: string, body: Record<string, any>): Promise<any>
 }
 
 async function alpacaDelete(path: string): Promise<void> {
-  const res = await fetch(`${ALPACA_BASE}${path}`, {
+  const res = await fetch(`${getBaseUrl()}${path}`, {
     method: "DELETE",
     headers: getHeaders(),
   });
@@ -116,19 +121,19 @@ export interface AlpacaOrder {
 export { isLiveTrading };
 
 export async function getAccount(): Promise<AlpacaAccount> {
-  return alpacaGet(ALPACA_BASE, "/v2/account");
+  return alpacaGet(getBaseUrl(), "/v2/account");
 }
 
 export async function getPositions(): Promise<AlpacaPosition[]> {
-  return alpacaGet(ALPACA_BASE, "/v2/positions");
+  return alpacaGet(getBaseUrl(), "/v2/positions");
 }
 
 export async function getPosition(symbol: string): Promise<AlpacaPosition> {
-  return alpacaGet(ALPACA_BASE, `/v2/positions/${symbol}`);
+  return alpacaGet(getBaseUrl(), `/v2/positions/${symbol}`);
 }
 
 export async function getOrders(status: string = "all", limit: number = 50): Promise<AlpacaOrder[]> {
-  return alpacaGet(ALPACA_BASE, "/v2/orders", { status, limit: limit.toString(), direction: "desc" });
+  return alpacaGet(getBaseUrl(), "/v2/orders", { status, limit: limit.toString(), direction: "desc" });
 }
 
 export async function placeOrder(params: {
@@ -161,7 +166,7 @@ export async function cancelAllOrders(): Promise<void> {
 }
 
 export async function closePosition(symbol: string): Promise<AlpacaOrder> {
-  const res = await fetch(`${ALPACA_BASE}/v2/positions/${symbol}`, {
+  const res = await fetch(`${getBaseUrl()}/v2/positions/${symbol}`, {
     method: "DELETE",
     headers: getHeaders(),
   });
@@ -170,6 +175,22 @@ export async function closePosition(symbol: string): Promise<AlpacaOrder> {
     throw new Error(`Alpaca API error ${res.status}: ${text}`);
   }
   return res.json();
+}
+
+export interface AlpacaPortfolioHistory {
+  timestamp: number[];
+  equity: number[];
+  profit_loss: number[];
+  profit_loss_pct: number[];
+  base_value: number;
+  timeframe: string;
+}
+
+export async function getPortfolioHistory(
+  period: string = "1M",
+  timeframe: string = "1D"
+): Promise<AlpacaPortfolioHistory> {
+  return alpacaGet(getBaseUrl(), "/v2/account/portfolio/history", { period, timeframe });
 }
 
 export async function isAlpacaConnected(): Promise<boolean> {

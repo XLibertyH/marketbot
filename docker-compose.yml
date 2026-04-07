@@ -1,0 +1,23 @@
+services:
+  tradebot:
+    build: .
+    container_name: tradebot-ai
+    restart: unless-stopped
+    ports:
+      - "3333:3333"
+    volumes:
+      # Mount the 2.68GB SQLite prices database into where the CJS bundle expects it
+      - ./server/data/prices.sqlite:/app/dist/data/prices.sqlite:ro
+    environment:
+      - NODE_ENV=production
+      - PORT=3333
+      - HOST=0.0.0.0
+      # Ollama runs on the Mac host — use Docker's host gateway
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
+      - OLLAMA_MODEL=deepseek-r1:70b
+      # Add your API keys here (or configure via the Settings UI at runtime)
+      # - FINNHUB_API_KEY=your_key_here
+      # - ALPACA_API_KEY=your_key_here
+      # - ALPACA_SECRET_KEY=your_secret_here
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

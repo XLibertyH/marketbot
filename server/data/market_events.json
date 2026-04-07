@@ -1,0 +1,816 @@
+[
+  {
+    "event_id": "EVT-2000-DOTCOM",
+    "event_name": "Dot-Com Bubble Burst",
+    "start_date": "2000-03",
+    "end_date": "2002-10",
+    "category": "bubble_burst",
+    "primary_cause": "Overvaluation of internet companies",
+    "trigger_event": "Tech stock selloff after earnings failures",
+    "market_impact": {
+      "sp500_drawdown_pct": -49,
+      "nasdaq_drawdown_pct": -78,
+      "duration_months": 31
+    },
+    "severity": "severe",
+    "global_impact": true,
+    "systemic_risk": false,
+    "recovery_time_months": 60,
+    "notes": "Massive tech overvaluation corrected",
+    "macro_context": {
+      "inflation_cpi_pct": null,
+      "fed_funds_rate": null,
+      "yield_curve_spread_10y_2y": null,
+      "gdp_growth_pct": null,
+      "unemployment_rate": null
+    },
+    "market_context": {
+      "sp500_pe_ratio": null,
+      "shiller_cape": null,
+      "market_cap_to_gdp": null,
+      "margin_debt_level": null,
+      "market_concentration_top5_pct": null
+    },
+    "sentiment_context": {
+      "vix_level": null,
+      "put_call_ratio": null,
+      "aaii_bull_bear_spread": null,
+      "fear_greed_index": null
+    },
+    "liquidity_context": {
+      "fed_balance_sheet_trend": null,
+      "credit_spreads_bps": null,
+      "m2_growth_pct": null,
+      "bank_reserve_levels": null
+    },
+    "global_context": {
+      "oil_price_usd": null,
+      "dxy_index": null,
+      "china_pmi": null,
+      "geopolitical_risk_index": "low",
+      "global_trade_stress": null
+    },
+    "pre_event_trends": {
+      "sp500_3m_return_pct": null,
+      "sp500_6m_return_pct": null,
+      "nasdaq_3m_return_pct": null,
+      "nasdaq_6m_return_pct": null,
+      "vix_trend_30d": null,
+      "credit_spread_trend": null,
+      "rate_hike_cycle": null
+    },
+    "policy_response": {
+      "rate_cut_bps": null,
+      "qe_announced": null,
+      "fiscal_stimulus_pct_gdp": null,
+      "liquidity_facility_announced": null
+    },
+    "event_specific": {
+      "valuation_excess_level": "extreme",
+      "tech_sector_pe_ratio": null,
+      "ipo_speculation_index": null,
+      "unprofitable_growth_share_pct": null,
+      "retail_speculation_level": null
+    }
+  },
+  {
+    "event_id": "EVT-2001-911",
+    "event_name": "September 11 Attacks",
+    "start_date": "2001-09",
+    "end_date": "2001-09",
+    "category": "geopolitical_shock",
+    "primary_cause": "Terrorist attack",
+    "trigger_event": "Coordinated attacks on US soil",
+    "market_impact": {
+      "sp500_drawdown_pct": -12,
+      "nasdaq_drawdown_pct": -16,
+      "duration_months": 1
+    },
+    "severity": "moderate",
+    "global_impact": true,
+    "systemic_risk": false,
+    "recovery_time_months": 2,
+    "notes": "Short-term panic selloff",
+    "macro_context": {
+      "inflation_cpi_pct": null,
+      "fed_funds_rate": null,
+      "yield_curve_spread_10y_2y": null,
+      "gdp_growth_pct": null,
+      "unemployment_rate": null
+    },
+    "market_context": {
+      "sp500_pe_ratio": null,
+      "shiller_cape": null,
+      "market_cap_to_gdp": null,
+      "margin_debt_level": null,
+      "market_concentration_top5_pct": null
+    },
+    "sentiment_context": {
+      "vix_level": null,
+      "put_call_ratio": null,
+      "aaii_bull_bear_spread": null,
+      "fear_greed_index": null
+    },
+    "liquidity_context": {
+      "fed_balance_sheet_trend": null,
+      "credit_spreads_bps": null,
+      "m2_growth_pct": null,
+      "bank_reserve_levels": null
+    },
+    "global_context": {
+      "oil_price_usd": null,
+      "dxy_index": null,
+      "china_pmi": null,
+      "geopolitical_risk_index": "extreme",
+      "global_trade_stress": null
+    },
+    "pre_event_trends": {
+      "sp500_3m_return_pct": null,
+      "sp500_6m_return_pct": null,
+      "nasdaq_3m_return_pct": null,
+      "nasdaq_6m_return_pct": null,
+      "vix_trend_30d": null,
+      "credit_spread_trend": null,
+      "rate_hike_cycle": null
+    },
+    "policy_response": {
+      "rate_cut_bps": null,
+      "qe_announced": false,
+      "fiscal_stimulus_pct_gdp": null,
+      "liquidity_facility_announced": null
+    },
+    "event_specific": {
+      "attack_type": "terrorist_attack",
+      "market_closure_days": null,
+      "transport_disruption_level": "high",
+      "aviation_sector_stress": "extreme",
+      "homeland_security_shock": "extreme"
+    }
+  },
+  {
+    "event_id": "EVT-2008-GFC",
+    "event_name": "Global Financial Crisis",
+    "start_date": "2007-10",
+    "end_date": "2009-03",
+    "category": "financial_crisis",
+    "primary_cause": "Subprime mortgage collapse",
+    "trigger_event": "Lehman Brothers bankruptcy",
+    "market_impact": {
+      "sp500_drawdown_pct": -57,
+      "nasdaq_drawdown_pct": -55,
+      "duration_months": 17
+    },
+    "severity": "extreme",
+    "global_impact": true,
+    "systemic_risk": true,
+    "recovery_time_months": 49,
+    "notes": "Largest financial collapse since Great Depression",
+    "macro_context": {
+      "inflation_cpi_pct": null,
+      "fed_funds_rate": null,
+      "yield_curve_spread_10y_2y": null,
+      "gdp_growth_pct": null,
+      "unemployment_rate": null
+    },
+    "market_context": {
+      "sp500_pe_ratio": null,
+      "shiller_cape": null,
+      "market_cap_to_gdp": null,
+      "margin_debt_level": "high",
+      "market_concentration_top5_pct": null
+    },
+    "sentiment_context": {
+      "vix_level": null,
+      "put_call_ratio": null,
+      "aaii_bull_bear_spread": null,
+      "fear_greed_index": null
+    },
+    "liquidity_context": {
+      "fed_balance_sheet_trend": null,
+      "credit_spreads_bps": null,
+      "m2_growth_pct": null,
+      "bank_reserve_levels": "declining"
+    },
+    "global_context": {
+      "oil_price_usd": null,
+      "dxy_index": null,
+      "china_pmi": null,
+      "geopolitical_risk_index": "moderate",
+      "global_trade_stress": null
+    },
+    "pre_event_trends": {
+      "sp500_3m_return_pct": null,
+      "sp500_6m_return_pct": null,
+      "nasdaq_3m_return_pct": null,
+      "nasdaq_6m_return_pct": null,
+      "vix_trend_30d": "rising",
+      "credit_spread_trend": "widening",
+      "rate_hike_cycle": null
+    },
+    "policy_response": {
+      "rate_cut_bps": null,
+      "qe_announced": true,
+      "fiscal_stimulus_pct_gdp": null,
+      "liquidity_facility_announced": true
+    },
+    "event_specific": {
+      "housing_price_decline_pct": null,
+      "mortgage_default_rate": null,
+      "bank_leverage_ratio": null,
+      "interbank_funding_stress": "extreme",
+      "major_institution_failure": true
+    }
+  },
+  {
+    "event_id": "EVT-2010-EURO",
+    "event_name": "European Sovereign Debt Crisis",
+    "start_date": "2010-04",
+    "end_date": "2012-07",
+    "category": "sovereign_debt",
+    "primary_cause": "Unsustainable government debt",
+    "trigger_event": "Greek debt default fears",
+    "market_impact": {
+      "sp500_drawdown_pct": -19,
+      "nasdaq_drawdown_pct": -17,
+      "duration_months": 27
+    },
+    "severity": "moderate",
+    "global_impact": true,
+    "systemic_risk": true,
+    "recovery_time_months": 6,
+    "notes": "Eurozone instability",
+    "macro_context": {
+      "inflation_cpi_pct": null,
+      "fed_funds_rate": null,
+      "yield_curve_spread_10y_2y": null,
+      "gdp_growth_pct": null,
+      "unemployment_rate": null
+    },
+    "market_context": {
+      "sp500_pe_ratio": null,
+      "shiller_cape": null,
+      "market_cap_to_gdp": null,
+      "margin_debt_level": null,
+      "market_concentration_top5_pct": null
+    },
+    "sentiment_context": {
+      "vix_level": null,
+      "put_call_ratio": null,
+      "aaii_bull_bear_spread": null,
+      "fear_greed_index": null
+    },
+    "liquidity_context": {
+      "fed_balance_sheet_trend": null,
+      "credit_spreads_bps": null,
+      "m2_growth_pct": null,
+      "bank_reserve_levels": null
+    },
+    "global_context": {
+      "oil_price_usd": null,
+      "dxy_index": null,
+      "china_pmi": null,
+      "geopolitical_risk_index": "moderate",
+      "global_trade_stress": null
+    },
+    "pre_event_trends": {
+      "sp500_3m_return_pct": null,
+      "sp500_6m_return_pct": null,
+      "nasdaq_3m_return_pct": null,
+      "nasdaq_6m_return_pct": null,
+      "vix_trend_30d": "rising",
+      "credit_spread_trend": "widening",
+      "rate_hike_cycle": null
+    },
+    "policy_response": {
+      "rate_cut_bps": null,
+      "qe_announced": null,
+      "fiscal_stimulus_pct_gdp": null,
+      "liquidity_facility_announced": true
+    },
+    "event_specific": {
+      "peripheral_bond_spreads_bps": null,
+      "default_probability_greece": null,
+      "eurozone_breakup_fears": "high",
+      "bank_contagion_risk": "high",
+      "sovereign_bailout_cycle": true
+    }
+  },
+  {
+    "event_id": "EVT-2011-USDOWNGRADE",
+    "event_name": "US Credit Rating Downgrade",
+    "start_date": "2011-08",
+    "end_date": "2011-10",
+    "category": "policy_shock",
+    "primary_cause": "Debt ceiling crisis",
+    "trigger_event": "S&P downgrade of US credit",
+    "market_impact": {
+      "sp500_drawdown_pct": -17,
+      "nasdaq_drawdown_pct": -16,
+      "duration_months": 2
+    },
+    "severity": "moderate",
+    "global_impact": true,
+    "systemic_risk": false,
+    "recovery_time_months": 5,
+    "notes": "Confidence shock",
+    "macro_context": {
+      "inflation_cpi_pct": null,
+      "fed_funds_rate": null,
+      "yield_curve_spread_10y_2y": null,
+      "gdp_growth_pct": null,
+      "unemployment_rate": null
+    },
+    "market_context": {
+      "sp500_pe_ratio": null,
+      "shiller_cape": null,
+      "market_cap_to_gdp": null,
+      "margin_debt_level": null,
+      "market_concentration_top5_pct": null
+    },
+    "sentiment_context": {
+      "vix_level": null,
+      "put_call_ratio": null,
+      "aaii_bull_bear_spread": null,
+      "fear_greed_index": null
+    },
+    "liquidity_context": {
+      "fed_balance_sheet_trend": null,
+      "credit_spreads_bps": null,
+      "m2_growth_pct": null,
+      "bank_reserve_levels": null
+    },
+    "global_context": {
+      "oil_price_usd": null,
+      "dxy_index": null,
+      "china_pmi": null,
+      "geopolitical_risk_index": "moderate",
+      "global_trade_stress": null
+    },
+    "pre_event_trends": {
+      "sp500_3m_return_pct": null,
+      "sp500_6m_return_pct": null,
+      "nasdaq_3m_return_pct": null,
+      "nasdaq_6m_return_pct": null,
+      "vix_trend_30d": "rising",
+      "credit_spread_trend": null,
+      "rate_hike_cycle": false
+    },
+    "policy_response": {
+      "rate_cut_bps": null,
+      "qe_announced": null,
+      "fiscal_stimulus_pct_gdp": null,
+      "liquidity_facility_announced": null
+    },
+    "event_specific": {
+      "debt_ceiling_deadlock": true,
+      "sovereign_rating_change_notches": null,
+      "government_shutdown_risk": "elevated",
+      "policy_confidence_shock": "high",
+      "treasury_market_stress": null
+    }
+  },
+  {
+    "event_id": "EVT-2015-CHINA",
+    "event_name": "China Market Crash",
+    "start_date": "2015-06",
+    "end_date": "2016-02",
+    "category": "global_growth",
+    "primary_cause": "Economic slowdown in China",
+    "trigger_event": "Yuan devaluation",
+    "market_impact": {
+      "sp500_drawdown_pct": -13,
+      "nasdaq_drawdown_pct": -15,
+      "duration_months": 8
+    },
+    "severity": "moderate",
+    "global_impact": true,
+    "systemic_risk": false,
+    "recovery_time_months": 4,
+    "notes": "Global contagion fears",
+    "macro_context": {
+      "inflation_cpi_pct": null,
+      "fed_funds_rate": null,
+      "yield_curve_spread_10y_2y": null,
+      "gdp_growth_pct": null,
+      "unemployment_rate": null
+    },
+    "market_context": {
+      "sp500_pe_ratio": null,
+      "shiller_cape": null,
+      "market_cap_to_gdp": null,
+      "margin_debt_level": null,
+      "market_concentration_top5_pct": null
+    },
+    "sentiment_context": {
+      "vix_level": null,
+      "put_call_ratio": null,
+      "aaii_bull_bear_spread": null,
+      "fear_greed_index": null
+    },
+    "liquidity_context": {
+      "fed_balance_sheet_trend": null,
+      "credit_spreads_bps": null,
+      "m2_growth_pct": null,
+      "bank_reserve_levels": null
+    },
+    "global_context": {
+      "oil_price_usd": null,
+      "dxy_index": null,
+      "china_pmi": null,
+      "geopolitical_risk_index": "low",
+      "global_trade_stress": "elevated"
+    },
+    "pre_event_trends": {
+      "sp500_3m_return_pct": null,
+      "sp500_6m_return_pct": null,
+      "nasdaq_3m_return_pct": null,
+      "nasdaq_6m_return_pct": null,
+      "vix_trend_30d": "rising",
+      "credit_spread_trend": null,
+      "rate_hike_cycle": null
+    },
+    "policy_response": {
+      "rate_cut_bps": null,
+      "qe_announced": false,
+      "fiscal_stimulus_pct_gdp": null,
+      "liquidity_facility_announced": null
+    },
+    "event_specific": {
+      "yuan_devaluation_pct": null,
+      "china_equity_margin_financing": null,
+      "china_pmi_contraction": null,
+      "commodity_demand_shock": "high",
+      "em_contagion_risk": "elevated"
+    }
+  },
+  {
+    "event_id": "EVT-2020-COVID",
+    "event_name": "COVID-19 Market Crash",
+    "start_date": "2020-02",
+    "end_date": "2020-03",
+    "category": "pandemic",
+    "primary_cause": "Global economic shutdown",
+    "trigger_event": "Rapid global spread of COVID-19",
+    "market_impact": {
+      "sp500_drawdown_pct": -34,
+      "nasdaq_drawdown_pct": -30,
+      "duration_months": 1
+    },
+    "severity": "extreme",
+    "global_impact": true,
+    "systemic_risk": true,
+    "recovery_time_months": 5,
+    "notes": "Fastest crash and recovery",
+    "macro_context": {
+      "inflation_cpi_pct": null,
+      "fed_funds_rate": null,
+      "yield_curve_spread_10y_2y": null,
+      "gdp_growth_pct": null,
+      "unemployment_rate": null
+    },
+    "market_context": {
+      "sp500_pe_ratio": null,
+      "shiller_cape": null,
+      "market_cap_to_gdp": null,
+      "margin_debt_level": null,
+      "market_concentration_top5_pct": null
+    },
+    "sentiment_context": {
+      "vix_level": null,
+      "put_call_ratio": null,
+      "aaii_bull_bear_spread": null,
+      "fear_greed_index": null
+    },
+    "liquidity_context": {
+      "fed_balance_sheet_trend": "expanding",
+      "credit_spreads_bps": null,
+      "m2_growth_pct": null,
+      "bank_reserve_levels": null
+    },
+    "global_context": {
+      "oil_price_usd": null,
+      "dxy_index": null,
+      "china_pmi": null,
+      "geopolitical_risk_index": "moderate",
+      "global_trade_stress": "extreme"
+    },
+    "pre_event_trends": {
+      "sp500_3m_return_pct": null,
+      "sp500_6m_return_pct": null,
+      "nasdaq_3m_return_pct": null,
+      "nasdaq_6m_return_pct": null,
+      "vix_trend_30d": "exploding_higher",
+      "credit_spread_trend": "widening",
+      "rate_hike_cycle": false
+    },
+    "policy_response": {
+      "rate_cut_bps": null,
+      "qe_announced": true,
+      "fiscal_stimulus_pct_gdp": null,
+      "liquidity_facility_announced": true
+    },
+    "event_specific": {
+      "global_lockdown_pct": null,
+      "supply_chain_disruption_index": null,
+      "mobility_collapse_pct": null,
+      "infection_growth_rate": null,
+      "travel_shutdown_level": "extreme"
+    }
+  },
+  {
+    "event_id": "EVT-2022-INFLATION",
+    "event_name": "Inflation and Rate Hike Bear Market",
+    "start_date": "2022-01",
+    "end_date": "2022-10",
+    "category": "monetary_policy",
+    "primary_cause": "High inflation",
+    "trigger_event": "Federal Reserve rate hikes",
+    "market_impact": {
+      "sp500_drawdown_pct": -25,
+      "nasdaq_drawdown_pct": -35,
+      "duration_months": 10
+    },
+    "severity": "moderate",
+    "global_impact": true,
+    "systemic_risk": false,
+    "recovery_time_months": 12,
+    "notes": "Valuation compression",
+    "macro_context": {
+      "inflation_cpi_pct": null,
+      "fed_funds_rate": null,
+      "yield_curve_spread_10y_2y": null,
+      "gdp_growth_pct": null,
+      "unemployment_rate": null
+    },
+    "market_context": {
+      "sp500_pe_ratio": null,
+      "shiller_cape": null,
+      "market_cap_to_gdp": null,
+      "margin_debt_level": null,
+      "market_concentration_top5_pct": null
+    },
+    "sentiment_context": {
+      "vix_level": null,
+      "put_call_ratio": null,
+      "aaii_bull_bear_spread": null,
+      "fear_greed_index": null
+    },
+    "liquidity_context": {
+      "fed_balance_sheet_trend": "shrinking",
+      "credit_spreads_bps": null,
+      "m2_growth_pct": null,
+      "bank_reserve_levels": null
+    },
+    "global_context": {
+      "oil_price_usd": null,
+      "dxy_index": null,
+      "china_pmi": null,
+      "geopolitical_risk_index": "high",
+      "global_trade_stress": "elevated"
+    },
+    "pre_event_trends": {
+      "sp500_3m_return_pct": null,
+      "sp500_6m_return_pct": null,
+      "nasdaq_3m_return_pct": null,
+      "nasdaq_6m_return_pct": null,
+      "vix_trend_30d": "rising",
+      "credit_spread_trend": "widening",
+      "rate_hike_cycle": true
+    },
+    "policy_response": {
+      "rate_cut_bps": 0,
+      "qe_announced": false,
+      "fiscal_stimulus_pct_gdp": null,
+      "liquidity_facility_announced": false
+    },
+    "event_specific": {
+      "inflation_peak_pct": null,
+      "rate_hike_speed_bps_6m": null,
+      "real_yield_change_pct": null,
+      "valuation_compression_level": "high",
+      "duration_of_tightening_months": null
+    }
+  },
+  {
+    "event_id": "EVT-2022-UKRAINE",
+    "event_name": "Russia-Ukraine War Impact",
+    "start_date": "2022-02",
+    "end_date": "2023-01",
+    "category": "geopolitical_conflict",
+    "primary_cause": "Military invasion",
+    "trigger_event": "Russian invasion of Ukraine",
+    "market_impact": {
+      "sp500_drawdown_pct": -12,
+      "nasdaq_drawdown_pct": -15,
+      "duration_months": 6
+    },
+    "severity": "moderate",
+    "global_impact": true,
+    "systemic_risk": false,
+    "recovery_time_months": 6,
+    "notes": "Energy and inflation shock amplifier",
+    "macro_context": {
+      "inflation_cpi_pct": null,
+      "fed_funds_rate": null,
+      "yield_curve_spread_10y_2y": null,
+      "gdp_growth_pct": null,
+      "unemployment_rate": null
+    },
+    "market_context": {
+      "sp500_pe_ratio": null,
+      "shiller_cape": null,
+      "market_cap_to_gdp": null,
+      "margin_debt_level": null,
+      "market_concentration_top5_pct": null
+    },
+    "sentiment_context": {
+      "vix_level": null,
+      "put_call_ratio": null,
+      "aaii_bull_bear_spread": null,
+      "fear_greed_index": null
+    },
+    "liquidity_context": {
+      "fed_balance_sheet_trend": "shrinking",
+      "credit_spreads_bps": null,
+      "m2_growth_pct": null,
+      "bank_reserve_levels": null
+    },
+    "global_context": {
+      "oil_price_usd": null,
+      "dxy_index": null,
+      "china_pmi": null,
+      "geopolitical_risk_index": "extreme",
+      "global_trade_stress": "high"
+    },
+    "pre_event_trends": {
+      "sp500_3m_return_pct": null,
+      "sp500_6m_return_pct": null,
+      "nasdaq_3m_return_pct": null,
+      "nasdaq_6m_return_pct": null,
+      "vix_trend_30d": "rising",
+      "credit_spread_trend": "widening",
+      "rate_hike_cycle": true
+    },
+    "policy_response": {
+      "rate_cut_bps": 0,
+      "qe_announced": false,
+      "fiscal_stimulus_pct_gdp": null,
+      "liquidity_facility_announced": false
+    },
+    "event_specific": {
+      "oil_supply_disruption_pct": null,
+      "natural_gas_price_spike_pct": null,
+      "sanctions_severity": "high",
+      "grain_export_disruption": "high",
+      "trade_route_risk": "elevated"
+    }
+  },
+  {
+    "event_id": "EVT-2023-BANKING",
+    "event_name": "Regional Banking Crisis",
+    "start_date": "2023-03",
+    "end_date": "2023-05",
+    "category": "financial_instability",
+    "primary_cause": "Interest rate risk mismanagement",
+    "trigger_event": "Silicon Valley Bank collapse",
+    "market_impact": {
+      "sp500_drawdown_pct": -8,
+      "nasdaq_drawdown_pct": -10,
+      "duration_months": 2
+    },
+    "severity": "mild",
+    "global_impact": false,
+    "systemic_risk": false,
+    "recovery_time_months": 3,
+    "notes": "Contained liquidity crisis",
+    "macro_context": {
+      "inflation_cpi_pct": null,
+      "fed_funds_rate": null,
+      "yield_curve_spread_10y_2y": null,
+      "gdp_growth_pct": null,
+      "unemployment_rate": null
+    },
+    "market_context": {
+      "sp500_pe_ratio": null,
+      "shiller_cape": null,
+      "market_cap_to_gdp": null,
+      "margin_debt_level": null,
+      "market_concentration_top5_pct": null
+    },
+    "sentiment_context": {
+      "vix_level": null,
+      "put_call_ratio": null,
+      "aaii_bull_bear_spread": null,
+      "fear_greed_index": null
+    },
+    "liquidity_context": {
+      "fed_balance_sheet_trend": null,
+      "credit_spreads_bps": null,
+      "m2_growth_pct": null,
+      "bank_reserve_levels": "stressed"
+    },
+    "global_context": {
+      "oil_price_usd": null,
+      "dxy_index": null,
+      "china_pmi": null,
+      "geopolitical_risk_index": "moderate",
+      "global_trade_stress": null
+    },
+    "pre_event_trends": {
+      "sp500_3m_return_pct": null,
+      "sp500_6m_return_pct": null,
+      "nasdaq_3m_return_pct": null,
+      "nasdaq_6m_return_pct": null,
+      "vix_trend_30d": "rising",
+      "credit_spread_trend": "widening",
+      "rate_hike_cycle": true
+    },
+    "policy_response": {
+      "rate_cut_bps": null,
+      "qe_announced": false,
+      "fiscal_stimulus_pct_gdp": null,
+      "liquidity_facility_announced": true
+    },
+    "event_specific": {
+      "deposit_outflow_pct": null,
+      "unrealized_bond_losses_usd": null,
+      "duration_mismatch_level": "high",
+      "deposit_concentration_risk": "high",
+      "bank_run_speed": null
+    }
+  },
+  {
+    "event_id": "EVT-2020-IRAN",
+    "event_name": "US-Iran Escalation",
+    "start_date": "2020-01",
+    "end_date": "2020-01",
+    "category": "geopolitical_conflict",
+    "primary_cause": "Military escalation",
+    "trigger_event": "Soleimani assassination",
+    "market_impact": {
+      "sp500_drawdown_pct": -4,
+      "nasdaq_drawdown_pct": -3,
+      "duration_months": 1
+    },
+    "severity": "mild",
+    "global_impact": false,
+    "systemic_risk": false,
+    "recovery_time_months": 1,
+    "notes": "Short-term volatility spike",
+    "macro_context": {
+      "inflation_cpi_pct": null,
+      "fed_funds_rate": null,
+      "yield_curve_spread_10y_2y": null,
+      "gdp_growth_pct": null,
+      "unemployment_rate": null
+    },
+    "market_context": {
+      "sp500_pe_ratio": null,
+      "shiller_cape": null,
+      "market_cap_to_gdp": null,
+      "margin_debt_level": null,
+      "market_concentration_top5_pct": null
+    },
+    "sentiment_context": {
+      "vix_level": null,
+      "put_call_ratio": null,
+      "aaii_bull_bear_spread": null,
+      "fear_greed_index": null
+    },
+    "liquidity_context": {
+      "fed_balance_sheet_trend": null,
+      "credit_spreads_bps": null,
+      "m2_growth_pct": null,
+      "bank_reserve_levels": null
+    },
+    "global_context": {
+      "oil_price_usd": null,
+      "dxy_index": null,
+      "china_pmi": null,
+      "geopolitical_risk_index": "very_high",
+      "global_trade_stress": "elevated"
+    },
+    "pre_event_trends": {
+      "sp500_3m_return_pct": null,
+      "sp500_6m_return_pct": null,
+      "nasdaq_3m_return_pct": null,
+      "nasdaq_6m_return_pct": null,
+      "vix_trend_30d": null,
+      "credit_spread_trend": null,
+      "rate_hike_cycle": null
+    },
+    "policy_response": {
+      "rate_cut_bps": null,
+      "qe_announced": false,
+      "fiscal_stimulus_pct_gdp": null,
+      "liquidity_facility_announced": false
+    },
+    "event_specific": {
+      "oil_supply_disruption_pct": null,
+      "strait_of_hormuz_risk": "high",
+      "retaliation_probability": null,
+      "regional_conflict_spillover_risk": "elevated",
+      "safe_haven_flow_intensity": null
+    }
+  }
+]

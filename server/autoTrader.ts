@@ -1,10 +1,13 @@
 import { storage } from "./storage";
-import { analyzeStock, discoverStocks } from "./aiAnalysis";
+import { analyzeStock, discoverStocks, detectMarketRegime, analyzeNewsSentiment } from "./aiAnalysis";
+import type { MarketRegime } from "./aiAnalysis";
 import { placeOrder, getAccount, getPositions, isLiveTrading } from "./alpaca";
 import { validateOrder, recordOrderPlaced } from "./tradingGuards";
-import { getMockQuote, getMockHistoricalData, getMockNews, getMockSignal } from "./mockData";
 import { getFinnhubQuote, getFinnhubCandles, getFinnhubNews } from "./finnhub";
 import { calculateHalfKelly, recordTradeOutcome, updateOutcomes } from "./kellyCriterion";
+import { runMomentumScan } from "./momentumScanner";
+import { getMarketBuzz } from "./marketIntel";
+import { isHistoricalDataAvailable, getHistoricalPrices, getStatisticalSummary } from "./historicalData";
 import { log } from "./index";
 import type { StockQuote, HistoricalDataPoint } from "@shared/schema";
 
@@ -67,6 +70,20 @@ async function runAutoTradePass() {
 
   addLog("scan", `Scanning ${watchlist.length} stocks from watchlist`);
 
+  // Detect market regime using SPY or broad market proxy
+  let regime: MarketRegime | null = null;
+  try {
+    const spyHistory = (isHistoricalDataAvailable() ? getHistoricalPrices("SPY", 60) : null) || [];
+    regime = await detectMarketRegime(spyHistory);
+    addLog("signal", `Market regime: ${regime.regime} (${(regime.confidence * 100).toFixed(0)}% confidence, exposure: ${(regime.suggestedExposure * 100).toFixed(0)}%) — ${regime.reason}`);
+
+    if (regime.regime === "crisis") {
+      addLog("skip", "CRISIS regime detected — skipping all BUY orders this cycle");
+    }
+  } catch (err: any) {
+    addLog("error", `Market regime detection failed: ${err.message}`);
+  }
+
   let existingPositions: string[] = [];
   try {
     const positions = await getPositions();
@@ -82,27 +99,55 @@ async function runAutoTradePass() {
       let headlines: string[];
 
       try {
-        if (!settings.simulationMode) {
-          quote = await getFinnhubQuote(item.symbol);
-          history = await getFinnhubCandles(item.symbol, 30);
-          const liveNews = await getFinnhubNews(item.symbol, 3);
-          headlines = liveNews.map(n => n.headline);
-        } else {
-          quote = getMockQuote(item.symbol);
-          history = getMockHistoricalData(item.symbol, 30);
-          headlines = getMockNews(item.symbol, 3).map(n => n.headline);
-        }
+        quote = await getFinnhubQuote(item.symbol);
+        history = await getFinnhubCandles(item.symbol, 30);
+        const liveNews = await getFinnhubNews(item.symbol, 3);
+        headlines = liveNews.map(n => n.headline);
       } catch {
-        quote = getMockQuote(item.symbol);
-        history = getMockHistoricalData(item.symbol, 30);
-        headlines = getMockNews(item.symbol, 3).map(n => n.headline);
+        // Finnhub unavailable — try Alpaca position for price
+        try {
+          const positions = await getPositions();
+          const pos = positions.find(p => p.symbol === item.symbol);
+          if (pos) {
+            quote = { symbol: item.symbol, price: parseFloat(pos.current_price), change: parseFloat(pos.current_price) - parseFloat(pos.lastday_price), changePercent: +(parseFloat(pos.change_today) * 100).toFixed(2), high: parseFloat(pos.current_price), low: parseFloat(pos.current_price), open: parseFloat(pos.lastday_price), previousClose: parseFloat(pos.lastday_price), volume: 0 };
+          } else {
+            continue; // No data for this symbol
+          }
+        } catch { continue; }
+        history = (isHistoricalDataAvailable() ? getHistoricalPrices(item.symbol, 30) : null) || [];
+        headlines = [];
       }
+
+      // Get statistical summary from 30-year historical DB
+      const stats = isHistoricalDataAvailable() ? getStatisticalSummary(item.symbol) : null;
 
       let signalData: { signal: string; confidence: number; reason: string };
       try {
-        signalData = await analyzeStock(item.symbol, quote, history, headlines);
+        signalData = await analyzeStock(item.symbol, quote, history, headlines, stats);
       } catch {
-        signalData = getMockSignal(item.symbol, quote.price);
+        continue; // AI unavailable — skip this symbol, don't store a mock signal
+      }
+
+      // Adjust confidence based on news sentiment
+      if (headlines.length > 0) {
+        try {
+          const sentimentResults = await analyzeNewsSentiment(
+            headlines.map(h => ({ headline: h, symbol: item.symbol }))
+          );
+          const avgSentiment = sentimentResults.reduce((sum, r) => sum + r.score, 0) / sentimentResults.length;
+
+          if (avgSentiment < -0.6) {
+            const before = signalData.confidence;
+            signalData.confidence = Math.max(0, signalData.confidence - 0.10);
+            addLog("signal", `Bearish sentiment (${avgSentiment.toFixed(2)}) — confidence reduced ${(before * 100).toFixed(0)}% → ${(signalData.confidence * 100).toFixed(0)}%`, item.symbol);
+          } else if (avgSentiment > 0.6) {
+            const before = signalData.confidence;
+            signalData.confidence = Math.min(1, signalData.confidence + 0.05);
+            addLog("signal", `Bullish sentiment (${avgSentiment.toFixed(2)}) — confidence boosted ${(before * 100).toFixed(0)}% → ${(signalData.confidence * 100).toFixed(0)}%`, item.symbol);
+          }
+        } catch {
+          // Sentiment analysis failed, continue without adjustment
+        }
       }
 
       await storage.addSignal({
@@ -130,6 +175,12 @@ async function runAutoTradePass() {
       }
 
       if (signalData.signal === "BUY") {
+        // Skip BUYs during crisis regime
+        if (regime?.regime === "crisis") {
+          addLog("skip", "BUY skipped — market in CRISIS regime", item.symbol);
+          continue;
+        }
+
         if (existingPositions.includes(item.symbol.toUpperCase())) {
           addLog("skip", "Already holding a position — skipping BUY", item.symbol);
           continue;
@@ -153,6 +204,13 @@ async function runAutoTradePass() {
           } catch (err: any) {
             addLog("error", `Kelly calculation failed, using fixed size: ${err.message}`, item.symbol);
           }
+        }
+
+        // Apply regime exposure multiplier
+        if (regime && regime.suggestedExposure < 1.0) {
+          const before = positionDollars;
+          positionDollars = positionDollars * regime.suggestedExposure;
+          addLog("signal", `Regime adjustment: $${before.toFixed(0)} × ${(regime.suggestedExposure * 100).toFixed(0)}% exposure = $${positionDollars.toFixed(0)}`, item.symbol);
         }
 
         const qty = Math.max(1, Math.floor(positionDollars / quote.price));
@@ -254,6 +312,13 @@ async function runAutoTradePass() {
   addLog("scan", "Auto-trade scan complete");
 
   await discoverNewStocks(settings);
+
+  // Momentum scanner — rotate through broader ticker universe looking for big movers
+  try {
+    await runMomentumScan();
+  } catch (err: any) {
+    addLog("error", `Momentum scan failed: ${err.message}`);
+  }
 }
 
 async function discoverNewStocks(settings: Awaited<ReturnType<typeof storage.getSettings>>) {
@@ -262,13 +327,25 @@ async function discoverNewStocks(settings: Awaited<ReturnType<typeof storage.get
     const currentSymbols = watchlist.map(w => w.symbol.toUpperCase());
 
     let recentNews: string[] = [];
-    if (!settings.simulationMode) {
-      for (const item of watchlist.slice(0, 3)) {
-        try {
-          const news = await getFinnhubNews(item.symbol, 3);
-          recentNews.push(...news.map(n => n.headline));
-        } catch {}
-      }
+    for (const item of watchlist.slice(0, 3)) {
+      try {
+        const news = await getFinnhubNews(item.symbol, 3);
+        recentNews.push(...news.map(n => n.headline));
+      } catch {}
+    }
+
+    // Enrich with broad market buzz from Reddit/RSS/SEC
+    const buzz = getMarketBuzz();
+    if (buzz && buzz.topTickers.length > 0) {
+      const buzzHeadlines = buzz.topTickers
+        .slice(0, 5)
+        .flatMap(b => b.headlines.slice(0, 2))
+        .filter(h => h.length > 0);
+      const buzzSummary = buzz.topTickers
+        .slice(0, 4)
+        .map(b => `${b.ticker} trending (${b.mentionCount} mentions across ${b.sources.join("/")})`)
+      recentNews.push(...buzzHeadlines, ...buzzSummary);
+      addLog("scan", `Injecting ${buzzHeadlines.length} buzz headlines from ${buzz.topTickers.length} trending tickers into AI discovery`);
     }
 
     addLog("scan", "AI scanning for new stocks to add to watchlist...");
