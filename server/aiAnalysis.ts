@@ -46,7 +46,7 @@ let _ollamaBaseURL = "";
 function getOllamaClient(): OpenAI {
   const baseURL = storage.getApiKey("OLLAMA_BASE_URL") || process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1";
   if (!_ollamaClient || baseURL !== _ollamaBaseURL) {
-    _ollamaClient = new OpenAI({ apiKey: "ollama", baseURL, timeout: 10 * 60 * 1000 });
+    _ollamaClient = new OpenAI({ apiKey: "ollama", baseURL, timeout: 20 * 60 * 1000 });
     _ollamaBaseURL = baseURL;
   }
   return _ollamaClient;
@@ -115,11 +115,13 @@ export async function callAIWithThinking(
   systemPrompt: string,
   userPrompt: string,
   maxTokens: number = 4096,
-  temperature: number = 0.6
+  temperature: number = 0.6,
+  signal?: AbortSignal
 ): Promise<{ thinking: string; conclusion: string; raw: string }> {
   let lastError: any;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (signal?.aborted) throw new Error("AI thinking aborted");
     try {
       const model = getDeepModel();
       console.log(`[AI-Deep] Thinking attempt ${attempt + 1} using ${model}...`);
@@ -131,7 +133,7 @@ export async function callAIWithThinking(
         ],
         max_tokens: maxTokens,
         temperature,
-      });
+      }, { signal });
 
       const raw = response.choices[0]?.message?.content || "";
       if (raw.length > 0) {
@@ -141,6 +143,7 @@ export async function callAIWithThinking(
       }
       lastError = new Error("Empty response from AI");
     } catch (error: any) {
+      if (signal?.aborted) throw new Error("AI thinking aborted");
       lastError = error;
       console.error(`AI thinking call attempt ${attempt + 1} failed:`, error.message || error);
       if (attempt < MAX_RETRIES) {
@@ -162,8 +165,12 @@ async function callSignalAI(
   maxTokens: number = 2048
 ): Promise<string> {
   let lastError: any;
+  // 5 min timeout per attempt — prevents zombie requests from piling up in Ollama
+  const SIGNAL_TIMEOUT_MS = 5 * 60 * 1000;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), SIGNAL_TIMEOUT_MS);
     try {
       const model = getSignalModel();
       const response = await getOllamaClient().chat.completions.create({
@@ -174,7 +181,7 @@ async function callSignalAI(
         ],
         max_tokens: maxTokens,
         temperature: 0.3,
-      });
+      }, { signal: controller.signal });
 
       const content = response.choices[0]?.message?.content || "";
       const cleaned = stripThinkingTags(content);
@@ -186,6 +193,8 @@ async function callSignalAI(
       if (attempt < MAX_RETRIES) {
         await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
       }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
   throw lastError;
@@ -200,8 +209,12 @@ async function callAI(
   maxTokens: number = 2048
 ): Promise<string> {
   let lastError: any;
+  // 3 min timeout per attempt — 8b model is fast, shouldn't need more
+  const FAST_TIMEOUT_MS = 3 * 60 * 1000;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FAST_TIMEOUT_MS);
     try {
       const model = getFastModel();
       const response = await getOllamaClient().chat.completions.create({
@@ -212,7 +225,7 @@ async function callAI(
         ],
         max_tokens: maxTokens,
         temperature: 0.3,
-      });
+      }, { signal: controller.signal });
 
       const content = response.choices[0]?.message?.content || "";
       const cleaned = stripThinkingTags(content);
@@ -224,6 +237,8 @@ async function callAI(
       if (attempt < MAX_RETRIES) {
         await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
       }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
   throw lastError;

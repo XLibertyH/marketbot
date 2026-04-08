@@ -75,6 +75,89 @@ function sentimentColor(avg: number): string {
   return "text-amber-600";
 }
 
+/** Lightweight markdown → JSX for AI conclusions */
+function MarkdownContent({ text }: { text: string }) {
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+  let listItems: string[] = [];
+  let listOrdered = false;
+
+  function flushList() {
+    if (listItems.length === 0) return;
+    const Tag = listOrdered ? "ol" : "ul";
+    elements.push(
+      <Tag key={elements.length} className={`${listOrdered ? "list-decimal" : "list-disc"} pl-5 space-y-1 my-2 text-sm text-foreground/90`}>
+        {listItems.map((li, i) => <li key={i}><InlineFormat text={li} /></li>)}
+      </Tag>
+    );
+    listItems = [];
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Headings
+    const h3 = trimmed.match(/^###\s+(.*)/);
+    if (h3) { flushList(); elements.push(<h4 key={i} className="font-semibold text-sm mt-4 mb-1 text-foreground">{h3[1].replace(/\*\*/g, "")}</h4>); continue; }
+    const h2 = trimmed.match(/^##\s+(.*)/);
+    if (h2) { flushList(); elements.push(<h3 key={i} className="font-bold text-base mt-4 mb-1 text-foreground">{h2[1].replace(/\*\*/g, "")}</h3>); continue; }
+
+    // Numbered list
+    const ol = trimmed.match(/^\d+\.\s+(.*)/);
+    if (ol) {
+      if (!listOrdered && listItems.length > 0) flushList();
+      listOrdered = true;
+      listItems.push(ol[1]);
+      continue;
+    }
+
+    // Bullet list
+    const ul = trimmed.match(/^[-•]\s+(.*)/);
+    if (ul) {
+      if (listOrdered && listItems.length > 0) flushList();
+      listOrdered = false;
+      listItems.push(ul[1]);
+      continue;
+    }
+
+    flushList();
+
+    // Horizontal rule
+    if (/^---+$/.test(trimmed)) { elements.push(<hr key={i} className="my-3 border-border/50" />); continue; }
+
+    // Empty line
+    if (trimmed === "") { continue; }
+
+    // Paragraph
+    elements.push(<p key={i} className="text-sm leading-relaxed text-foreground/90 mb-2"><InlineFormat text={trimmed} /></p>);
+  }
+  flushList();
+
+  return <div>{elements}</div>;
+}
+
+/** Inline bold/ticker formatting */
+function InlineFormat({ text }: { text: string }) {
+  // Split on **bold** markers
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.startsWith("**") && part.endsWith("**")) {
+          const inner = part.slice(2, -2);
+          // Ticker-like bold (all caps, short) gets a special style
+          if (/^[A-Z]{1,5}$/.test(inner)) {
+            return <span key={i} className="font-bold text-primary">{inner}</span>;
+          }
+          return <strong key={i} className="font-semibold text-foreground">{inner}</strong>;
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
 // ── ThinkingCard ──────────────────────────────────────────────
 
 function ThinkingCard({ thought }: { thought: AIThought }) {
@@ -178,10 +261,8 @@ function ThinkingCard({ thought }: { thought: AIThought }) {
       <CardContent className="space-y-4">
         {/* ── Conclusion ── */}
         {thought.conclusion && (
-          <div className="prose prose-sm dark:prose-invert max-w-none">
-            <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">
-              {thought.conclusion}
-            </p>
+          <div className="max-w-none">
+            <MarkdownContent text={thought.conclusion} />
           </div>
         )}
 

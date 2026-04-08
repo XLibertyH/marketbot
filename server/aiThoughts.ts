@@ -47,8 +47,8 @@ let nextThinkAt: Date | null = null;
 const THINK_INTERVAL_MS = 2 * 60 * 1000;
 
 // Max time to wait for a single thinking session before giving up
-// 70b is sharing VRAM with 14b + 8b, so it needs more time
-const THINK_TIMEOUT_MS = 8 * 60 * 1000;
+// 70b runs at ~9.3 tok/s — 4096 tokens ≈ 7.3 min, so give it 15 min with buffer
+const THINK_TIMEOUT_MS = 15 * 60 * 1000;
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -212,13 +212,20 @@ export async function runThinkingSession(): Promise<AIThought> {
     const { prompt, snapshot } = await buildUserPrompt();
     const systemPrompt = buildSystemPrompt();
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("AI thinking timed out after 3 minutes")), THINK_TIMEOUT_MS)
-    );
-    const result = await Promise.race([
-      callAIWithThinking(systemPrompt, prompt, 4096, 0.65),
-      timeoutPromise,
-    ]);
+    // AbortController cancels the actual HTTP request to Ollama on timeout,
+    // preventing zombie requests from piling up and deadlocking the model queue
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      console.log("[AIThoughts] Aborting thinking request — timeout reached");
+    }, THINK_TIMEOUT_MS);
+
+    let result: { thinking: string; conclusion: string; raw: string };
+    try {
+      result = await callAIWithThinking(systemPrompt, prompt, 4096, 0.65, controller.signal);
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     const thought: AIThought = {
       id,

@@ -6,7 +6,8 @@
       "runtimeExecutable": "/opt/homebrew/bin/node",
       "runtimeArgs": ["node_modules/.bin/tsx", "server/index.ts"],
       "env": { "NODE_ENV": "development" },
-      "port": 3333
+      "port": 3333,
+      "autoPort": true
     }
   ]
 }

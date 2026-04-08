@@ -8,6 +8,8 @@ services:
     volumes:
       # Mount the 2.68GB SQLite prices database into where the CJS bundle expects it
       - ./server/data/prices.sqlite:/app/dist/data/prices.sqlite:ro
+      # Mount .env so API keys persist across rebuilds without baking them into the image
+      - ./.env:/app/.env:ro
     environment:
       - NODE_ENV=production
       - PORT=3333
